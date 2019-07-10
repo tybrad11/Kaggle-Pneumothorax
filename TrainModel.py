@@ -41,7 +41,7 @@ train_params = {'batch_size': batch_size,
                 'fill_mode': 'constant',
                 'cval': 0.,
                 'horizontal_flip': True,
-                'vertical_flip': True,
+                'vertical_flip': False,
                 'rescale': None,
                 'preprocessing_function': None,
                 'interpolation_order': 1}
