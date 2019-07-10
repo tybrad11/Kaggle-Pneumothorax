@@ -102,6 +102,6 @@ def BlockModel2D(input_shape,filt_num=16,numBlocks=3):
         x = ELU(name='elu_Dclean2_{}'.format(dd))(x)
         
     # classifier
-    lay_out = Conv2D(output_chan,(1,1), activation='sigmoid',name='output_layer')(x)
+    lay_out = Conv2D(1,(1,1), activation='sigmoid',name='output_layer')(x)
     
     return Model(lay_input,lay_out)
