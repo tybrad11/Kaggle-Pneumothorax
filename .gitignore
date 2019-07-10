@@ -1,3 +1,6 @@
 .vscode/settings.json
 __pycache__/VisTools.cpython-37.pyc
 __pycache__/mask_functions_pneumothorax.cpython-37.pyc
+__pycache__/Models.cpython-37.pyc
+__pycache__/Datagen.cpython-37.pyc
+__pycache__/Losses.cpython-37.pyc
