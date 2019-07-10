@@ -15,28 +15,47 @@ from mask_functions_pneumothorax import rle2mask
 train_datapath = '/data/Kaggle/train'
 train_outpath = '/data/Kaggle/train-png'
 train_mask_path = '/data/Kaggle/train-mask'
+test_datapath = '/data/Kaggle/test'
+test_outpath = '/data/Kaggle/test-png'
 if not os.path.exists(train_outpath):
     os.mkdir(train_outpath)
 if not os.path.exists(train_mask_path):
     os.mkdir(train_mask_path)
+if not os.path.exists(test_outpath):
+    os.mkdir(test_outpath)
+
 csv_file = 'train-rle.csv'
-
-all_files = [f for f in glob.glob(
-    train_datapath + '**/**/*.dcm', recursive=True)]
-
 
 def splitfile(file):
     _, file = os.path.split(file)
     return os.path.splitext(file)[0]
 
 
-# Convert all dicoms to png
-print('Converting DICOMs to PNG...')
+# Training images
+all_files = [f for f in glob.glob(
+    train_datapath + '**/**/*.dcm', recursive=True)]
+
+# Convert dicoms to png
+print('Converting train DICOMs to PNG...')
 for cur_file in tqdm(all_files):
     ds = dcm.dcmread(cur_file)
     cur_name = splitfile(cur_file) + '.png'
     cur_outpath = os.path.join(train_outpath, cur_name)
     cv2.imwrite(cur_outpath, ds.pixel_array)
+
+# Testing images
+all_test_files = [f for f in glob.glob(
+    test_datapath + '**/**/*.dcm', recursive=True)]
+
+print('Converting train DICOMs to PNG...')
+for cur_file in tqdm(all_test_files):
+    ds = dcm.dcmread(cur_file)
+    cur_name = splitfile(cur_file) + '.png'
+    cur_outpath = os.path.join(test_outpath, cur_name)
+    cv2.imwrite(cur_outpath, ds.pixel_array)
+
+
+# Mask conversions
 
 # Read csv file
 with open(csv_file, 'r') as f:
@@ -82,7 +101,7 @@ print('Done')
 # Testing
 
 # test_id = '1.2.276.0.7230010.3.1.4.8323329.3604.1517875178.653360'
-test_id = unq_file_ids[7]
+test_id = unq_file_ids[21]
 
 img = Image.open(os.path.join(train_outpath, test_id+'.png'))
 mask_img = Image.open(os.path.join(train_mask_path, test_id+'.png'))
