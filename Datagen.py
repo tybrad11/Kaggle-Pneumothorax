@@ -12,7 +12,7 @@ except ImportError:
     scipy = None
 
 
-class ImageDataGenerator(keras.utils.Sequence):
+class PngDataGenerator(keras.utils.Sequence):
     """
     Image Data Generator with augmentation"
     to be used for providing batches of
@@ -69,7 +69,7 @@ class ImageDataGenerator(keras.utils.Sequence):
         self.channel_axis = 3
         self.row_axis = 1
         self.col_axis = 2
-        
+
         # parse zoom parameter
         if np.isscalar(zoom_range):
             self.zoom_range = [1 - zoom_range, 1 + zoom_range]
@@ -92,34 +92,39 @@ class ImageDataGenerator(keras.utils.Sequence):
         'Generates data containing batch_size samples'
         # Initialization
         X = np.empty((self.batch_size,) + self.dim + (self.n_channels,))
-        y = np.empty((self.batch_size), dtype=np.float)
+        Y = np.empty((self.batch_size,) + self.dim + (self.n_channels,))
         # Generate data
         for i, f in enumerate(list_files_temp):
             # load and resize image
             im = np.array(Image.open(f))
-            if len(im.shape)==2:
-                im = im[...,np.newaxis]
-                if self.n_channels > 1:
-                    im = np.repeat(im,self.n_channels,axis=2)
             if im.shape[:2] != self.dim:
-                im_r = np.zeros(self.dim + (self.n_channels,))
-                for i in range(self.n_channels):
-                    im_r[...,i] = cv2.resize(im[...,i], self.dim)
-                im = im_r
+                im = cv2.resize(im, self.dim)
+            im = im[..., np.newaxis]
+
+            # load and resize mask
+
+            mask = np.array(Image.open(self.labels(f)))
+            if mask.shape[:2] != self.dim:
+                mask = cv2.resize(mask, self.dim)
+            mask = mask[..., np.newaxis]
 
             # apply random transformation
-            x = self.random_transform(im)
+            params = self.get_random_transform(im.shape)
+            x = self.apply_transform(im, params)
+            # x = self.random_transform(im)
+            y = self.apply_transform(mask, params)
 
             # store image sample
             X[i, ] = x
 
-            # store class label
-            y[i] = self.labels[f]
+            # store mask
+            y[i, ] = y
+
         # batch-wise normalization
         X -= np.mean(X)
         X /= np.std(X)
 
-        return X, y
+        return X, Y
 
     def __len__(self):
         'Denotes the number of batches per epoch'
