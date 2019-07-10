@@ -8,7 +8,7 @@ from os.path import join
 import GPUtil
 import numpy as np
 from keras.optimizers import Adam
-from Datagen import ImageDataGenerator
+from Datagen import PngDataGenerator
 
 from Losses import dice_coef_loss
 from Models import BlockModel2D
@@ -49,7 +49,7 @@ train_params = {'batch_size': batch_size,
                 'preprocessing_function': None,
                 'interpolation_order': 1}
 
-datagen = ImageDataGenerator()
+datagen = PngDataGenerator()
 
 
 # Create model
