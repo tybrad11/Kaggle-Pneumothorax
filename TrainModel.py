@@ -94,6 +94,7 @@ model.compile(Adam(), loss=dice_coef_loss)
 # Create callbacks
 cb_check = ModelCheckpoint('Best_Kaggle_Weights.h5', monitor='val_loss',
                            verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
+cb_plateau = ReduceLROnPlateau(monitor='val_loss',factor=.5,patience=3,verbose=1)
 
 
 # Train model
