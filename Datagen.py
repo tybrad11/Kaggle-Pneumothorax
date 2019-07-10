@@ -118,7 +118,7 @@ class PngDataGenerator(keras.utils.Sequence):
             X[i, ] = x
 
             # store mask
-            y[i, ] = y
+            Y[i, ] = y
 
         # batch-wise normalization
         X -= np.mean(X)
