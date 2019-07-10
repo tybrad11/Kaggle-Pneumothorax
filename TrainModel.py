@@ -23,13 +23,13 @@ train_mask_path = '/data/Kaggle/train-mask'
 # parameters
 im_dims = (512, 512)
 n_channels = 1
-batch_size = 16
+batch_size = 4
 val_split = .2
 epochs = 1
-multi_process = False
+multi_process = True
 train_params = {'batch_size': batch_size,
                 'dim': im_dims,
-                'n_channels': 3,
+                'n_channels': 1,
                 'shuffle': True,
                 'rotation_range': 10,
                 'width_shift_range': 0.1,
@@ -48,7 +48,7 @@ train_params = {'batch_size': batch_size,
 
 val_params = {'batch_size': batch_size,
               'dim': im_dims,
-              'n_channels': 3,
+              'n_channels': 1,
               'shuffle': True,
               'rotation_range': 0,
               'width_shift_range': 0.,
