@@ -103,7 +103,7 @@ class PngDataGenerator(keras.utils.Sequence):
 
             # load and resize mask
 
-            mask = np.array(Image.open(self.labels(f)))
+            mask = np.array(Image.open(self.labels[f]))
             if mask.shape[:2] != self.dim:
                 mask = cv2.resize(mask, self.dim)
             mask = mask[..., np.newaxis]
