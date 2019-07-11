@@ -10,6 +10,7 @@ from Datagen import PngDataGenerator
 from Losses import dice_coef_loss
 import keras
 from Models import BlockModel2D
+import GPUtil
 
 class PneumothoraxModel:
     def __init__(self, *args, image_path='/data/Kaggle/train-png',
@@ -22,6 +23,13 @@ class PneumothoraxModel:
                  optimizer='Adam',
                  loss='dice',
                  multi_process=True):
+        try:
+            if not 'DEVICE_ID' in locals():
+                DEVICE_ID = GPUtil.getFirstAvailable()[0]
+                print('Using GPU',DEVICE_ID)
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
+        except Exception as e:
+            raise('No GPU available')
         self.image_path = image_path
         self.mask_path = mask_path
         self.test_path = test_path
@@ -35,6 +43,7 @@ class PneumothoraxModel:
         self.optimzer_str = optimizer
         self.loss_str = loss
         self.init_functions()
+
 
     def init_functions(self):
         self.init_aug_params()
