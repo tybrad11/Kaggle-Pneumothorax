@@ -167,8 +167,60 @@ def BlockModel_Classifier(input_shape,filt_num=16,numBlocks=3):
         x = BatchNormalization()(x)
         x = ELU(name='elu_skip_{}'.format(rr))(x)
     
+    # average pooling
+    x = GlobalAveragePooling2D()(x)
+    # classifier
+    lay_out = Dense(1, activation='sigmoid',name='output_layer')(x)
+    
+    return Model(lay_input,lay_out)
+
+def ConvertEncoderToCED(model):
+    # Returns a model with frozen encoder layers
+    # and complimentary, unfrozen decoder layers
+    # get input layer
+    # model must be compiled again after using this function
+    lay_input = model.input
+    # get skip connection layer outputs
+    skip_list = [l.output for l in model.layers if 'skip' in l.name]
+    numBlocks = len(skip_layers)
+    filt_num = int(skip_layers[0].shape[-1])
+    x = model.layers[-3].output
+    # freeze encoder layers
+    for layer in model:
+        layer.trainable=False
+
+    # make expanding blocks
+    expnums = list(range(1,numBlocks+1))
+    expnums.reverse()
+    for dd in expnums:
+        if dd < len(skip_list):
+            x = concatenate([skip_list[dd-1],x],name='skip_connect_{}'.format(dd))
+        x1 = Conv2D(filt_num*dd, (1, 1),padding='same',name='DeConv1_{}'.format(dd))(x)
+        x1 = BatchNormalization()(x1)
+        x1 = ELU(name='elu_Dx1_{}'.format(dd))(x1)
+        x3 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv3_{}'.format(dd))(x)
+        x3 = BatchNormalization()(x3)
+        x3 = ELU(name='elu_Dx3_{}'.format(dd))(x3)
+        x51 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv51_{}'.format(dd))(x)
+        x51 = BatchNormalization()(x51)
+        x51 = ELU(name='elu_Dx51_{}'.format(dd))(x51)
+        x52 = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConv52_{}'.format(dd))(x51)
+        x52 = BatchNormalization()(x52)
+        x52 = ELU(name='elu_Dx52_{}'.format(dd))(x52)
+        x = concatenate([x1,x3,x52],name='Dmerge_{}'.format(dd))
+        x = Conv2D(filt_num*dd,(1,1),padding='valid',name='DeConvAll_{}'.format(dd))(x)
+        x = BatchNormalization()(x)
+        x = ELU(name='elu_Dall_{}'.format(dd))(x)
+        x = UpSampling2D(size=(2,2),name='UpSample_{}'.format(dd))(x)
+        x = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConvClean1_{}'.format(dd))(x)
+        x = BatchNormalization()(x)
+        x = ELU(name='elu_Dclean1_{}'.format(dd))(x)
+        x = Conv2D(filt_num*dd, (3, 3),padding='same',name='DeConvClean2_{}'.format(dd))(x)
+        x = BatchNormalization()(x)
+        x = ELU(name='elu_Dclean2_{}'.format(dd))(x)
         
     # classifier
     lay_out = Conv2D(1,(1,1), activation='sigmoid',name='output_layer')(x)
     
     return Model(lay_input,lay_out)
+
