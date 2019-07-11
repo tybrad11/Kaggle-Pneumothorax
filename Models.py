@@ -182,8 +182,8 @@ def ConvertEncoderToCED(model):
     lay_input = model.input
     # get skip connection layer outputs
     skip_list = [l.output for l in model.layers if 'skip' in l.name]
-    numBlocks = len(skip_layers)
-    filt_num = int(skip_layers[0].shape[-1])
+    numBlocks = len(skip_list)
+    filt_num = int(skip_list[0].shape[-1])
     x = model.layers[-3].output
     # freeze encoder layers
     for layer in model:
