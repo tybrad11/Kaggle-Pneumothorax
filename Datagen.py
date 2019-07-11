@@ -14,7 +14,7 @@ except ImportError:
 
 class PngDataGenerator(keras.utils.Sequence):
     """
-    Image Data Generator with augmentation"
+    Image Data Generator with augmentation
     to be used for providing batches of
     images read by PIL to a model
     """
@@ -101,9 +101,11 @@ class PngDataGenerator(keras.utils.Sequence):
                 im = cv2.resize(im, self.dim)
             im = im[..., np.newaxis]
 
-            # load and resize mask
-
+            # load mask
             mask = np.array(Image.open(self.labels[f]))
+            # convert to binary
+            mask = (mask>0).astype(np.float)
+            # resize if needed
             if mask.shape[:2] != self.dim:
                 mask = cv2.resize(mask, self.dim)
             mask = mask[..., np.newaxis]
@@ -113,6 +115,8 @@ class PngDataGenerator(keras.utils.Sequence):
             x = self.apply_transform(im, params)
             # x = self.random_transform(im)
             y = self.apply_transform(mask, params)
+            # normalize image
+            x = self.__normalize_im(x.astype(np.float))
 
             # store image sample
             X[i, ] = x
@@ -120,11 +124,16 @@ class PngDataGenerator(keras.utils.Sequence):
             # store mask
             Y[i, ] = y
 
-        # batch-wise normalization
-        X -= np.mean(X)
-        X /= np.std(X)
-
         return X, Y
+    
+    def __normalize_im(self,x):
+        low_cut = np.percentile(x,5)
+        high_cut = np.percentile(x,95)
+        x -= low_cut
+        x /= high_cut
+        x[x<0] = 0.
+        x[x>1] = 0.
+        return x
 
     def __len__(self):
         'Denotes the number of batches per epoch'
@@ -140,8 +149,8 @@ class PngDataGenerator(keras.utils.Sequence):
         list_IDs_temp = [self.list_IDs[k] for k in indexes]
 
         # Generate data
-        X, y = self.__data_generation(list_IDs_temp)
-        return X, y
+        X, Y = self.__data_generation(list_IDs_temp)
+        return X, Y
 
     def get_random_transform(self, img_shape, seed=None):
         """Generates random parameters for a transformation.

@@ -1,19 +1,30 @@
+import csv
+import datetime
+import os
 from glob import glob
 from os.path import join
 
+import cv2
+import GPUtil
+import keras
 import numpy as np
+from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
 from natsort import natsorted
+from PIL import Image
+from scipy.ndimage.measurements import label as scipy_label
 from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
 from Datagen import PngDataGenerator
-
 from Losses import dice_coef_loss
-import keras
+from mask_functions_pneumothorax import mask2rle
 from Models import BlockModel2D
-import GPUtil
+from ProcessMasks import CleanMask_v1
+
 
 class PneumothoraxModel:
-    def __init__(self, *args, image_path='/data/Kaggle/train-png',
+    def __init__(self,
+                 image_path='/data/Kaggle/train-png',
                  mask_path='/data/Kaggle/train-mask',
                  test_path='/data/Kaggle/test-png',
                  dims=(512, 512),
@@ -26,7 +37,7 @@ class PneumothoraxModel:
         try:
             if not 'DEVICE_ID' in locals():
                 DEVICE_ID = GPUtil.getFirstAvailable()[0]
-                print('Using GPU',DEVICE_ID)
+                print('Using GPU', DEVICE_ID)
                 os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
         except Exception as e:
             raise('No GPU available')
@@ -44,14 +55,13 @@ class PneumothoraxModel:
         self.loss_str = loss
         self.init_functions()
 
-
     def init_functions(self):
         self.init_aug_params()
         self.init_file_list()
         self.init_optimization()
-        self.init_model()
         self.validation_split()
         self.setup_datagen()
+        self.init_callbacks()
 
     def init_aug_params(self):
         self.train_aug_params = {'batch_size': self.batch_size,
@@ -102,7 +112,7 @@ class PneumothoraxModel:
             print("WARNING:")
             print('Number of image files and list files do not match')
 
-    def init_optimization(self,lr=1e-4):
+    def init_optimization(self, lr=1e-4):
         if self.optimzer_str.lower() == 'adam':
             self.optimizer = keras.optimizers.Adam(lr=lr)
         else:
@@ -112,11 +122,15 @@ class PneumothoraxModel:
         else:
             raise('Unknown loss function')
 
-    def init_model(self):
+    def init_model(self, weights=None):
+        print('Initializing model...')
         self.model = self.get_model()
+        if weights is not None:
+            self.model.load_weights(weights)
         self.model.compile(self.optimizer, loss=self.loss)
 
     def validation_split(self):
+        print('Splitting data into train/validation...')
         trainX, valX, trainY, valY = train_test_split(
             self.img_files, self.mask_files, test_size=self.val_split, random_state=self.rng, shuffle=True)
         train_dict = dict([(f, mf) for f, mf in zip(trainX, trainY)])
@@ -127,6 +141,7 @@ class PneumothoraxModel:
         self.valY = valY
 
     def setup_datagen(self):
+        print('Setting up data generators...')
         self.train_gen = PngDataGenerator(self.trainX,
                                           self.trainY,
                                           **self.train_aug_params)
@@ -137,19 +152,103 @@ class PneumothoraxModel:
     def get_model(self, filt_num=16, numBlocks=4):
         return BlockModel2D(input_shape=self.dims+(self.n_channels,),
                             filt_num=filt_num, numBlocks=numBlocks)
-    def init_callbacks(self,filename='Pneumothorax_model_weights.h5',use_checkpoint=True,use_plateau=True):
+
+    def init_callbacks(self,
+                       filename=None,
+                       use_checkpoint=True,
+                       use_plateau=True,
+                       use_earlystop=True):
+        if filename is None:
+            if self.multi_process:
+                filename = 'Pneumothorax_model_weights_{epoch:02d}-{val_loss:.4f}.h5'
+            else:
+                filename = 'Best_Pneumothorax_Model_Weights_{}.h5'.format(self.dims[0])
+            
         callbacks = []
         if use_checkpoint:
             callbacks.append(ModelCheckpoint(filename, monitor='val_loss',
-                           verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1))
+                                             verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1))
         if use_plateau:
-            callbacks.append(ReduceLROnPlateau(monitor='val_loss',factor=.5,patience=3,verbose=1))
+            callbacks.append(ReduceLROnPlateau(
+                monitor='val_loss', factor=.5, patience=3, verbose=1))
+        if use_earlystop:
+            callbacks.append(EarlyStopping(monitor='val_loss',
+                                           patience=5, restore_best_weights=True))
         self.callbacks = callbacks
-    def train(self,epochs=None):
+
+    def train(self, epochs=None):
         if epochs is None:
             epochs = self.epochs
         print('Beginning training...')
         self.history = self.model.fit_generator(generator=self.train_gen,
-                            epochs=epochs, use_multiprocessing=self.multi_process,
-                            workers=8, verbose=1, callbacks=self.callbacks,
-                            validation_data=self.val_gen)
+                                                epochs=epochs, use_multiprocessing=self.multi_process,
+                                                workers=8, verbose=1, callbacks=self.callbacks,
+                                                validation_data=self.val_gen)
+
+    def splitfile(self, file):
+        _, file = os.path.split(file)
+        return os.path.splitext(file)[0]
+
+    def LoadImgForTest(self, f):
+        img = Image.open(f)
+        img = cv2.resize(np.array(img), self.dims).astype(np.float)
+        img = self.normalize_image(img)
+        return img
+
+    def normalize_image(self, x):
+        low_cut = np.percentile(x, 5)
+        high_cut = np.percentile(x, 95)
+        x -= low_cut
+        x /= high_cut
+        x[x < 0] = 0.
+        x[x > 1] = 0.
+        return x
+
+    def generate_submission(self):
+        test_datapath = '/data/Kaggle/test-png'
+        # Get list of files
+        img_files = natsorted(glob(join(test_datapath, '*.png')))
+        # load files into array
+        test_imgs = np.stack([self.LoadImgForTest(f, self.dims)
+                              for f in img_files])[..., np.newaxis]
+        # Get predicted masks
+        tqdm.write('Getting mask predictions...')
+        masks = self.model.predict(
+            test_imgs, batch_size=self.batch_size, verbose=1)
+        # data to write to csv
+        submission_data = []
+        # process mask
+        for ind, cur_file in enumerate(tqdm(img_files)):
+            cur_mask = masks[ind, ..., 0]
+            cur_im = test_imgs[ind, ..., 0]
+            cur_mask = (cur_mask > .5).astype(np.int)
+            cur_id = splitfile(cur_file)
+
+            processed_mask = CleanMask_v1(cur_mask)
+            lbl_mask, numObj = scipy_label(processed_mask)
+            if numObj > 0:
+                for label in range(1, numObj+1):
+                    temp_mask = np.zeros_like(cur_mask)
+                    temp_mask[lbl_mask == label] = 1
+                    temp_mask = cv2.resize(
+                        temp_mask.astype(np.float), (1024, 1024))
+                    temp_mask[temp_mask < .5] = 0
+                    temp_mask[temp_mask > 0] = 255
+                    temp_mask = np.transpose(temp_mask)
+                    cur_rle = mask2rle(temp_mask, 1024, 1024)
+                    submission_data.append([cur_id, cur_rle])
+            else:
+                cur_rle = -1
+                submission_data.append([cur_id, cur_rle])
+
+        # write to csv
+        # generate time-stamped filename
+        timestamp = datetime.datetime.now().strftime("%Y_%m_%d_%H%M")
+        csv_filename = 'TestSubmission_{}'.format(timestamp)
+        tqdm.write('Writing csv...')
+        with open(csv_filename, mode='w') as f:
+            writer = csv.writer(f, delimiter=',')
+            for row in tqdm(submission_data):
+                writer.writerow(row)
+
+        print('Done')

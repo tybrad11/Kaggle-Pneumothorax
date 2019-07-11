@@ -15,17 +15,29 @@ from sklearn.model_selection import train_test_split
 
 rng = np.random.RandomState(seed=1)
 
+import GPUtil
+try:
+    if not 'DEVICE_ID' in locals():
+            DEVICE_ID = GPUtil.getFirstAvailable()[0]
+            print('Using GPU',DEVICE_ID)
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
+except Exception as e:
+    raise('No GPU available')
+
 
 train_datapath = '/data/Kaggle/train-png'
 train_mask_path = '/data/Kaggle/train-mask'
+weight_filepath = 'Kaggle_Weights.{epoch:02d}-{val_loss:.4f}.h5'
 
+pretrain_weights_filepath = 'Best_Kaggle_Weights.02-0.61.h5'
+# pretrain_weights_filepath = None
 
 # parameters
 im_dims = (512, 512)
 n_channels = 1
 batch_size = 4
 val_split = .2
-epochs = 1
+epochs = 5
 multi_process = True
 train_params = {'batch_size': batch_size,
                 'dim': im_dims,
@@ -88,11 +100,15 @@ val_gen = PngDataGenerator(valX,
 # Create model
 model = BlockModel2D(input_shape=im_dims+(n_channels,),
                      filt_num=16, numBlocks=4)
+
+# Load pretrain weights, if provided
+if pretrain_weights_filepath is not None:
+    model.load_weights(pretrain_weights_filepath)
 # Compile model
 model.compile(Adam(), loss=dice_coef_loss)
 
 # Create callbacks
-cb_check = ModelCheckpoint('Best_Kaggle_Weights.h5', monitor='val_loss',
+cb_check = ModelCheckpoint(weight_filepath, monitor='val_loss',
                            verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
 cb_plateau = ReduceLROnPlateau(monitor='val_loss',factor=.5,patience=3,verbose=1)
 
