@@ -8,7 +8,7 @@ import cv2
 import GPUtil
 import keras
 import numpy as np
-from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
+from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from natsort import natsorted
 from PIL import Image
 from scipy.ndimage.measurements import label as scipy_label
@@ -122,12 +122,19 @@ class PneumothoraxModel:
         else:
             raise('Unknown loss function')
 
-    def init_model(self, weights=None):
+    def init_CED_model(self, weights=None):
         print('Initializing model...')
-        self.model = self.get_model()
+        self.model = self._get_model()
         if weights is not None:
             self.model.load_weights(weights)
         self.model.compile(self.optimizer, loss=self.loss)
+
+    def init_Class_model(self, weights=None):
+        print('Initializing classification model...')
+        self.class_model = self._get_class_model()
+        if weights is not None:
+            self.class_model.load_weights(weights)
+        self.model.compile(self.optimizer, loss=['binary_crossentropy'])
 
     def validation_split(self):
         print('Splitting data into train/validation...')
@@ -149,7 +156,7 @@ class PneumothoraxModel:
                                         self.valY,
                                         **self.val_aug_params)
 
-    def get_model(self, filt_num=16, numBlocks=4):
+    def _get_model(self, filt_num=16, numBlocks=4):
         return BlockModel2D(input_shape=self.dims+(self.n_channels,),
                             filt_num=filt_num, numBlocks=numBlocks)
 
@@ -160,13 +167,15 @@ class PneumothoraxModel:
                        use_earlystop=True):
         if filename is None:
             if self.multi_process:
-                filename = 'Pneumothorax_model_weights_{epoch:02d}-{val_loss:.4f}.h5'
+                self.cur_weights_name = 'Pneumothorax_model_weights_{epoch:02d}-{val_loss:.4f}.h5'
             else:
-                filename = 'Best_Pneumothorax_Model_Weights_{}.h5'.format(self.dims[0])
-            
+                timestamp = datetime.datetime.now().strftime("%Y_%m_%d_%H")
+                self.cur_weights_name = 'Best_Model_Weights_dim{}_date{}.h5'.format(
+                    self.dims[0], timestamp)
+
         callbacks = []
         if use_checkpoint:
-            callbacks.append(ModelCheckpoint(filename, monitor='val_loss',
+            callbacks.append(ModelCheckpoint(self.cur_weights_name, monitor='val_loss',
                                              verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1))
         if use_plateau:
             callbacks.append(ReduceLROnPlateau(
@@ -184,6 +193,14 @@ class PneumothoraxModel:
                                                 epochs=epochs, use_multiprocessing=self.multi_process,
                                                 workers=8, verbose=1, callbacks=self.callbacks,
                                                 validation_data=self.val_gen)
+        if self.multi_process:
+            h5files = glob('*.h5')
+            load_file = max(h5files, key=os.path.getctime)
+        else:
+            load_file = self.cur_weights_name
+        print('Training complete. Loading best weights...')
+        self.model.load_weights(load_file)
+        print('Weights loaded.')
 
     def splitfile(self, file):
         _, file = os.path.split(file)
