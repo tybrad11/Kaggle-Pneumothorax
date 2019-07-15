@@ -186,7 +186,7 @@ def ConvertEncoderToCED(model):
     filt_num = int(skip_list[0].shape[-1])
     x = model.layers[-3].output
     # freeze encoder layers
-    for layer in model:
+    for layer in model.layers:
         layer.trainable=False
 
     # make expanding blocks
