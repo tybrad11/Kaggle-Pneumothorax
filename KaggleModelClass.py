@@ -15,17 +15,15 @@ from scipy.ndimage.measurements import label as scipy_label
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from Datagen import PngDataGenerator
+from Datagen import PngDataGenerator, PngClassDataGenerator
 from Losses import dice_coef_loss
 from mask_functions_pneumothorax import mask2rle
-from Models import BlockModel2D
+from Models import BlockModel2D, BlockModel_Classifier, ConvertEncoderToCED
 from ProcessMasks import CleanMask_v1
 
 
 class PneumothoraxModel:
     def __init__(self,
-                 image_path='/data/Kaggle/train-png',
-                 mask_path='/data/Kaggle/train-mask',
                  test_path='/data/Kaggle/test-png',
                  dims=(512, 512),
                  batch_size=8,
@@ -41,8 +39,6 @@ class PneumothoraxModel:
                 os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
         except Exception as e:
             raise('No GPU available')
-        self.image_path = image_path
-        self.mask_path = mask_path
         self.test_path = test_path
         self.dims = dims
         self.n_channels = 1
@@ -57,10 +53,7 @@ class PneumothoraxModel:
 
     def init_functions(self):
         self.init_aug_params()
-        self.init_file_list()
         self.init_optimization()
-        self.validation_split()
-        self.setup_datagen()
         self.init_callbacks()
 
     def init_aug_params(self):
@@ -101,17 +94,7 @@ class PneumothoraxModel:
                                'preprocessing_function': None,
                                'interpolation_order': 1}
 
-    def init_file_list(self):
-        # get file list
-        self.img_files = natsorted(glob(join(self.image_path, '*.png')))
-        self.mask_files = natsorted(glob(join(self.mask_path, '*.png')))
-        self.test_files = natsorted(glob(join(self.test_path, '*.png')))
-        try:
-            assert len(self.img_files) == len(self.mask_files)
-        except AssertionError:
-            print("WARNING:")
-            print('Number of image files and list files do not match')
-
+    
     def init_optimization(self, lr=1e-4):
         if self.optimzer_str.lower() == 'adam':
             self.optimizer = keras.optimizers.Adam(lr=lr)
@@ -134,7 +117,7 @@ class PneumothoraxModel:
         self.class_model = self._get_class_model()
         if weights is not None:
             self.class_model.load_weights(weights)
-        self.model.compile(self.optimizer, loss=['binary_crossentropy'])
+        self.model.compile(self.optimizer, loss='binary_crossentropy')
 
     def validation_split(self):
         print('Splitting data into train/validation...')
@@ -145,16 +128,33 @@ class PneumothoraxModel:
         self.trainX = trainX
         self.valX = valX
         self.trainY = train_dict
-        self.valY = valY
+        self.valY = valY        
 
-    def setup_datagen(self):
+    def setup_datagen(self,image_path,labels):
         print('Setting up data generators...')
+        self.img_files = natsorted(glob(join(self.image_path, '*.png')))
+        if isinstance(labels,str):
+            self.labels = natsorted(glob(join(self.mask_path, '*.png')))
+            self.is_classification=False
+            try:
+                assert len(self.img_files) == len(self.labels)
+            except AssertionError:
+                print("WARNING:")
+                print('Number of image files and list files do not match')
+        else:
+            self.labels = labels
+            self.is_classification=True
+
         self.train_gen = PngDataGenerator(self.trainX,
                                           self.trainY,
                                           **self.train_aug_params)
         self.val_gen = PngDataGenerator(self.valX,
                                         self.valY,
                                         **self.val_aug_params)
+    def setup_class_datagen(self):
+        print('Setting up classification data generators...')
+        self.train_gen = PngClassDataGenerator(self.trainX,self.trainY,**self.train_aug_params)
+        self.val_gen = PngClassDataGenerator(self.trainX,self.trainY,**self.val_aug_params)
 
     def _get_model(self, filt_num=16, numBlocks=4):
         return BlockModel2D(input_shape=self.dims+(self.n_channels,),
