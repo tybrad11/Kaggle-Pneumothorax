@@ -44,9 +44,9 @@ weight_filepath = 'Kaggle_Weight_wpretrain_{epoch:02d}-{val_loss:.4f}.h5'
 pre_im_dims = (512, 512)
 pre_n_channels = 1
 pre_batch_size = 8
-pre_val_split = .2
+pre_val_split = .15
 pre_epochs = 10
-pre_multi_process = True
+pre_multi_process = False
 
 # train parameters
 im_dims = (512, 512)
@@ -66,7 +66,7 @@ pre_train_params = {'batch_size': pre_batch_size,
                     'height_shift_range': 0.1,
                     'brightness_range': None,
                     'shear_range': 0.,
-                    'zoom_range': 0.1,
+                    'zoom_range': 0.15,
                     'channel_shift_range': 0.,
                     'fill_mode': 'constant',
                     'cval': 0.,
@@ -116,6 +116,44 @@ train_params = {'batch_size': batch_size,
 
 val_params = {'batch_size': batch_size,
               'dim': im_dims,
+              'n_channels': n_channels,
+              'shuffle': True,
+              'rotation_range': 0,
+              'width_shift_range': 0.,
+              'height_shift_range': 0.,
+              'brightness_range': None,
+              'shear_range': 0.,
+              'zoom_range': 0.,
+              'channel_shift_range': 0.,
+              'fill_mode': 'constant',
+              'cval': 0.,
+              'horizontal_flip': False,
+              'vertical_flip': False,
+              'rescale': None,
+              'preprocessing_function': None,
+              'interpolation_order': 1}
+
+full_train_params = {'batch_size': 2,
+                'dim': (1024,1024),
+                'n_channels': n_channels,
+                'shuffle': True,
+                'rotation_range': 5,
+                'width_shift_range': 0.05,
+                'height_shift_range': 0.05,
+                'brightness_range': None,
+                'shear_range': 0.,
+                'zoom_range': 0.05,
+                'channel_shift_range': 0.,
+                'fill_mode': 'constant',
+                'cval': 0.,
+                'horizontal_flip': True,
+                'vertical_flip': False,
+                'rescale': None,
+                'preprocessing_function': None,
+                'interpolation_order': 1}
+
+full_val_params = {'batch_size': 2,
+              'dim': (1024,1024),
               'n_channels': n_channels,
               'shuffle': True,
               'rotation_range': 0,
@@ -200,7 +238,7 @@ pre_model.load_weights(pretrain_weights_filepath)
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~
-# ~~~~~~ Training~~~~~~~
+# ~~~~~~ Training ~~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -234,6 +272,8 @@ cb_check = ModelCheckpoint(weight_filepath, monitor='val_loss',
 cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=3, verbose=1)
 
+# Compile model
+model.compile(Adam(), loss=dice_coef_loss)
 
 history = model.fit_generator(generator=train_gen,
                               epochs=epochs[0], use_multiprocessing=multi_process,
@@ -251,3 +291,35 @@ history2 = model.fit_generator(generator=train_gen,
                                epochs=epochs[1], use_multiprocessing=multi_process,
                                workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
                                validation_data=val_gen)
+
+# make full-size model
+full_model = BlockModel2D((1024,1024,n_channels),filt_num=16,numBlocks=4)
+h5files = glob('*.h5')
+load_file = max(h5files, key=os.path.getctime)
+full_model.load_weights(load_file)
+
+full_model.compile(Adam(lr=1e-3),loss=dice_coef_loss)
+# Create callbacks
+cb_check = ModelCheckpoint(weight_filepath, monitor='val_loss',
+                           verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
+cb_plateau = ReduceLROnPlateau(
+    monitor='val_loss', factor=.5, patience=3, verbose=1)
+
+# Setup full size datagens
+train_gen = PngDataGenerator(trainX,
+                             train_dict,
+                             **full_train_params)
+val_gen = PngDataGenerator(valX,
+                           val_dict,
+                           **full_val_params)
+# train full size model
+history_full = full_model.fit_generator(generator=train_gen,
+                               epochs=2, use_multiprocessing=multi_process,
+                               workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
+                               validation_data=val_gen)
+
+
+# Rename best weights
+h5files = glob('*.h5')
+load_file = max(h5files, key=os.path.getctime)
+os.rename(load_file,'Best_Kaggle_weights_wpretrainfull.h5')
