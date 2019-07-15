@@ -32,8 +32,7 @@ def splitfile(file):
 
 
 test_datapath = '/data/Kaggle/test-png'
-# weight_filepath = 'Best_Kaggle_Weights.h5'
-weight_filepath = 'Best_Kaggle_Weights.02-0.61.h5'
+weight_filepath = 'Best_Kaggle_weights_wpretrain.h5'
 submission_filepath = 'Test_Submission_v1.csv'
 
 # parameters
@@ -90,24 +89,21 @@ for ind, cur_file in enumerate(tqdm(img_files)):
     processed_mask = CleanMask_v1(cur_mask)
     lbl_mask, numObj = scipy_label(processed_mask)
     if numObj > 0:
-        for label in range(1, numObj+1):
-            temp_mask = np.zeros_like(cur_mask)
-            temp_mask[lbl_mask == label] = 1
-            temp_mask = cv2.resize(temp_mask.astype(np.float), (1024, 1024))
-            temp_mask[temp_mask < .5] = 0
-            temp_mask[temp_mask > 0] = 255
-            temp_mask = np.transpose(temp_mask)
-            cur_rle = mask2rle(temp_mask, 1024, 1024)
-            submission_data.append([cur_id, cur_rle])
+        temp_mask = np.zeros_like(cur_mask)
+        temp_mask[lbl_mask == label] = 1
+        temp_mask = cv2.resize(temp_mask.astype(np.float), (1024, 1024))
+        temp_mask[temp_mask < .5] = 0
+        temp_mask[temp_mask > 0] = 255
+        temp_mask = np.transpose(temp_mask)
+        cur_rle = mask2rle(temp_mask, 1024, 1024)
     else:
         cur_rle = -1
-        submission_data.append([cur_id, cur_rle])
+    submission_data = [cur_id, cur_rle]
 
 # write to csv
 tqdm.write('Writing csv...')
 with open(submission_filepath, mode='w') as f:
     writer = csv.writer(f, delimiter=',')
-    for row in tqdm(submission_data):
-        writer.writerow(row)
+    writer.writerow(submission_data)
 
 print('Done')
