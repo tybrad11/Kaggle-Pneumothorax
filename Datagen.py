@@ -81,6 +81,7 @@ class PngDataGenerator(keras.utils.Sequence):
                              'Received: %s' % (zoom_range,))
 
         self.on_epoch_end()
+        super().__init__()
 
     def on_epoch_end(self):
         'updates indexes after each epoch'
@@ -393,11 +394,87 @@ class PngDataGenerator(keras.utils.Sequence):
 
 
 class PngClassDataGenerator(PngDataGenerator):
+    def __init__(self,
+                 file_list,
+                 labels,
+                 batch_size=32,
+                 dim=(256, 256),
+                 n_channels=1,
+                 shuffle=True,
+                 rotation_range=0,
+                 width_shift_range=0.,
+                 height_shift_range=0.,
+                 brightness_range=None,
+                 shear_range=0.,
+                 zoom_range=0.,
+                 channel_shift_range=0.,
+                 fill_mode='nearest',
+                 cval=0.,
+                 horizontal_flip=False,
+                 vertical_flip=False,
+                 rescale=None,
+                 preprocessing_function=None,
+                 interpolation_order=1,
+                 dtype='float32'):
+        """initialization"""
+        """initialization"""
+        self.dim = dim
+        self.batch_size = batch_size
+        self.labels = labels
+        self.list_IDs = file_list
+        self.n_channels = n_channels
+        self.shuffle = shuffle
+
+        # augmentation parameters
+        self.rotation_range = rotation_range
+        self.width_shift_range = width_shift_range
+        self.height_shift_range = height_shift_range
+        self.shear_range = shear_range
+        self.zoom_range = zoom_range
+        self.channel_shift_range = channel_shift_range
+        self.fill_mode = fill_mode
+        self.cval = cval
+        self.horizontal_flip = horizontal_flip
+        self.vertical_flip = vertical_flip
+        self.rescale = rescale
+        self.preprocessing_function = preprocessing_function
+        self.dtype = dtype
+        self.interpolation_order = interpolation_order
+
+        # designate axes
+        self.channel_axis = 3
+        self.row_axis = 1
+        self.col_axis = 2
+
+        # parse zoom parameter
+        if np.isscalar(zoom_range):
+            self.zoom_range = [1 - zoom_range, 1 + zoom_range]
+        elif len(zoom_range) == 2:
+            self.zoom_range = [zoom_range[0], zoom_range[1]]
+        else:
+            raise ValueError('`zoom_range` should be a float or '
+                             'a tuple or list of two floats. '
+                             'Received: %s' % (zoom_range,))
+
+        self.on_epoch_end()
+
+    def __getitem__(self, index):
+        'Generate one batch of data'
+        # Generate indexes of the batch
+        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
+
+        # Find list of IDs
+        list_IDs_temp = [self.list_IDs[k] for k in indexes]
+
+        # Generate data
+        X, Y = self.__data_generation(list_IDs_temp)
+        return X, Y
+
     def __data_generation(self, list_files_temp):
         'Generates data containing batch_size samples'
         # Initialization
         X = np.empty((self.batch_size,) + self.dim + (self.n_channels,))
-        Y = np.empty((self.batch_size,) + self.dim + (self.n_channels,))
+        Y = np.empty((self.batch_size,))
         # Generate data
         for i, f in enumerate(list_files_temp):
             # load and resize image
@@ -408,20 +485,8 @@ class PngClassDataGenerator(PngDataGenerator):
                 im = cv2.resize(im, self.dim)
             im = im[..., np.newaxis]
 
-            # load mask
-            mask = np.array(Image.open(self.labels[f]))
-            # convert to binary
-            mask = (mask > 0).astype(np.float)
-            # resize if needed
-            if mask.shape[:2] != self.dim:
-                mask = cv2.resize(mask, self.dim)
-            mask = mask[..., np.newaxis]
-
             # apply random transformation
-            params = self.get_random_transform(im.shape)
-            x = self.apply_transform(im, params)
-            # x = self.random_transform(im)
-            y = self.apply_transform(mask, params)
+            x = self.random_transform(im)
             # normalize image
             x = self.__normalize_im(x.astype(np.float))
 
@@ -429,6 +494,15 @@ class PngClassDataGenerator(PngDataGenerator):
             X[i, ] = x
 
             # store mask
-            Y[i, ] = y
+            Y[i, ] = self.labels[f]
 
         return X, Y
+
+    def __normalize_im(self, x):
+        low_cut = np.percentile(x, 5)
+        high_cut = np.percentile(x, 95)
+        x -= low_cut
+        x /= high_cut
+        x[x < 0] = 0.
+        x[x > 1] = 0.
+        return x
