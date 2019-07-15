@@ -97,6 +97,8 @@ class PngDataGenerator(keras.utils.Sequence):
         for i, f in enumerate(list_files_temp):
             # load and resize image
             im = np.array(Image.open(f))
+            if len(im.shape) > 2:
+                im = im[..., 0]
             if im.shape[:2] != self.dim:
                 im = cv2.resize(im, self.dim)
             im = im[..., np.newaxis]
@@ -104,7 +106,7 @@ class PngDataGenerator(keras.utils.Sequence):
             # load mask
             mask = np.array(Image.open(self.labels[f]))
             # convert to binary
-            mask = (mask>0).astype(np.float)
+            mask = (mask > 0).astype(np.float)
             # resize if needed
             if mask.shape[:2] != self.dim:
                 mask = cv2.resize(mask, self.dim)
@@ -125,14 +127,14 @@ class PngDataGenerator(keras.utils.Sequence):
             Y[i, ] = y
 
         return X, Y
-    
-    def __normalize_im(self,x):
-        low_cut = np.percentile(x,5)
-        high_cut = np.percentile(x,95)
+
+    def __normalize_im(self, x):
+        low_cut = np.percentile(x, 5)
+        high_cut = np.percentile(x, 95)
         x -= low_cut
         x /= high_cut
-        x[x<0] = 0.
-        x[x>1] = 0.
+        x[x < 0] = 0.
+        x[x > 1] = 0.
         return x
 
     def __len__(self):
@@ -388,3 +390,45 @@ class PngDataGenerator(keras.utils.Sequence):
             x = np.stack(channel_images, axis=0)
             x = np.rollaxis(x, 0, channel_axis + 1)
         return x
+
+
+class PngClassDataGenerator(PngDataGenerator):
+    def __data_generation(self, list_files_temp):
+        'Generates data containing batch_size samples'
+        # Initialization
+        X = np.empty((self.batch_size,) + self.dim + (self.n_channels,))
+        Y = np.empty((self.batch_size,) + self.dim + (self.n_channels,))
+        # Generate data
+        for i, f in enumerate(list_files_temp):
+            # load and resize image
+            im = np.array(Image.open(f))
+            if len(im.shape) > 2:
+                im = im[..., 0]
+            if im.shape[:2] != self.dim:
+                im = cv2.resize(im, self.dim)
+            im = im[..., np.newaxis]
+
+            # load mask
+            mask = np.array(Image.open(self.labels[f]))
+            # convert to binary
+            mask = (mask > 0).astype(np.float)
+            # resize if needed
+            if mask.shape[:2] != self.dim:
+                mask = cv2.resize(mask, self.dim)
+            mask = mask[..., np.newaxis]
+
+            # apply random transformation
+            params = self.get_random_transform(im.shape)
+            x = self.apply_transform(im, params)
+            # x = self.random_transform(im)
+            y = self.apply_transform(mask, params)
+            # normalize image
+            x = self.__normalize_im(x.astype(np.float))
+
+            # store image sample
+            X[i, ] = x
+
+            # store mask
+            Y[i, ] = y
+
+        return X, Y
