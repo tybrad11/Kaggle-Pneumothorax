@@ -45,7 +45,7 @@ pre_im_dims = (512, 512)
 pre_n_channels = 1
 pre_batch_size = 8
 pre_val_split = .2
-pre_epochs = 1
+pre_epochs = 10
 pre_multi_process = True
 
 # train parameters
@@ -53,7 +53,7 @@ im_dims = (512, 512)
 n_channels = 1
 batch_size = 4
 val_split = .2
-epochs = [1, 1]  # epochs before and after unfreezing weights
+epochs = [5, 20]  # epochs before and after unfreezing weights
 multi_process = True
 
 # datagen parameters
@@ -227,8 +227,6 @@ val_gen = PngDataGenerator(valX,
                            val_dict,
                            **val_params)
 
-# Compile model
-model.compile(Adam(), loss=dice_coef_loss)
 
 # Create callbacks
 cb_check = ModelCheckpoint(weight_filepath, monitor='val_loss',
@@ -237,7 +235,6 @@ cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=3, verbose=1)
 
 
-# Train model
 history = model.fit_generator(generator=train_gen,
                               epochs=epochs[0], use_multiprocessing=multi_process,
                               workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
@@ -246,6 +243,9 @@ history = model.fit_generator(generator=train_gen,
 # make all layers trainable again
 for layer in model.layers:
     layer.trainable = True
+
+# Compile model
+model.compile(Adam(), loss=dice_coef_loss)
 
 history2 = model.fit_generator(generator=train_gen,
                                epochs=epochs[1], use_multiprocessing=multi_process,
