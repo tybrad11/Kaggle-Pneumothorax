@@ -67,7 +67,6 @@ def DisplayDifferenceMask(im,mask1,mask2,name='Difference Mask',savepath=None):
     msk[...,3] = .3*mask_union.astype(float)
     
     fig = plt.figure(figsize=(8,8))
-    fig.index = 0
     plt.imshow(im,cmap='gray',aspect='equal',vmin=0, vmax=np.max(im))
     plt.imshow(msk)
     plt.tight_layout()
