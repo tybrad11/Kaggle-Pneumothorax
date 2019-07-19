@@ -90,7 +90,7 @@ for cur_id in tqdm(unq_file_ids):
         except IndexError as e:
             print(cur_id)
             raise IndexError(e)
-    # write mask tp png
+    # write mask to png
     mask = np.transpose(mask)
     cur_outpath = os.path.join(train_mask_path, cur_id+'.png')
     cv2.imwrite(cur_outpath, mask)
