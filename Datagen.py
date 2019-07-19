@@ -79,7 +79,6 @@ class PngDataGenerator(keras.utils.Sequence):
             raise ValueError('`zoom_range` should be a float or '
                              'a tuple or list of two floats. '
                              'Received: %s' % (zoom_range,))
-
         self.on_epoch_end()
         super().__init__()
 
@@ -104,6 +103,9 @@ class PngDataGenerator(keras.utils.Sequence):
                 im = cv2.resize(im, self.dim)
             im = im[..., np.newaxis]
 
+            # normalize to [0,1]
+            im /= 255.
+
             # load mask
             mask = np.array(Image.open(self.labels[f]))
             # convert to binary
@@ -113,13 +115,14 @@ class PngDataGenerator(keras.utils.Sequence):
                 mask = cv2.resize(mask, self.dim)
             mask = mask[..., np.newaxis]
 
+            # normalize to [0,1]
+            mask /= 255.
+
             # apply random transformation
             params = self.get_random_transform(im.shape)
             x = self.apply_transform(im, params)
             # x = self.random_transform(im)
             y = self.apply_transform(mask, params)
-            # normalize image
-            x = self.__normalize_im(x.astype(np.float))
 
             # store image sample
             X[i, ] = x
@@ -128,15 +131,6 @@ class PngDataGenerator(keras.utils.Sequence):
             Y[i, ] = y
 
         return X, Y
-
-    def __normalize_im(self, x):
-        low_cut = np.percentile(x, 5)
-        high_cut = np.percentile(x, 95)
-        x -= low_cut
-        x /= high_cut
-        x[x < 0] = 0.
-        x[x > 1] = 0.
-        return x
 
     def __len__(self):
         'Denotes the number of batches per epoch'
@@ -485,10 +479,11 @@ class PngClassDataGenerator(PngDataGenerator):
                 im = cv2.resize(im, self.dim)
             im = im[..., np.newaxis]
 
+            # normalize to [0,1]
+            im /= 255.
+            
             # apply random transformation
             x = self.random_transform(im)
-            # normalize image
-            x = self.__normalize_im(x.astype(np.float))
 
             # store image sample
             X[i, ] = x
@@ -497,12 +492,3 @@ class PngClassDataGenerator(PngDataGenerator):
             Y[i, ] = self.labels[f]
 
         return X, Y
-
-    def __normalize_im(self, x):
-        low_cut = np.percentile(x, 5)
-        high_cut = np.percentile(x, 95)
-        x -= low_cut
-        x /= high_cut
-        x[x < 0] = 0.
-        x[x > 1] = 0.
-        return x
