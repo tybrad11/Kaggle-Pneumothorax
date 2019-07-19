@@ -24,6 +24,21 @@ def showmask(im,mask):
     plt.axes = 'off'
     plt.show()
 #
+def Savemask(im,mask,name='image.png'):
+    "Saves the image with the mask overlaid"
+    
+    msksiz = np.r_[im.shape,4]
+    msk = np.zeros(msksiz,dtype=float)
+    msk[...,0] = 1
+    msk[...,1] = 1
+    msk[...,3] = .3*mask.astype(float)
+    
+    plt.figure()
+    plt.imshow(im,cmap=plt.cm.gray)
+    plt.imshow(msk)
+    plt.axes = 'off'
+    plt.savefig(name)
+#
 def DisplayDifferenceMask(im,mask1,mask2,name='Difference Mask',savepath=None):
     # adjust masks to binary
     mask1 = (mask1>.5)
