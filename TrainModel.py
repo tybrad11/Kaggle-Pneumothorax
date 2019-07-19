@@ -12,7 +12,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 
 from Datagen import PngClassDataGenerator, PngDataGenerator
-from HelperFunctions import (RenameWeights, get_class_datagen,
+from HelperFunctions import (RenameWeights, get_class_datagen, get_seg_datagen,
                              get_train_params, get_val_params)
 from Losses import dice_coef_loss
 from Models import BlockModel2D, BlockModel_Classifier, ConvertEncoderToCED
@@ -151,24 +151,7 @@ model = ConvertEncoderToCED(pre_model)
 
 # create segmentation datagens
 # using positive images only
-train_img_files = natsorted(glob(join(pos_img_path, '*.png')))
-train_mask_files = natsorted(glob(join(pos_mask_path, '*.png')))
-
-
-# Split into test/validation sets
-trainX, valX, trainY, valY = train_test_split(
-    train_img_files, train_mask_files, test_size=val_split, random_state=rng, shuffle=True)
-
-train_dict = dict([(f, mf) for f, mf in zip(trainX, trainY)])
-val_dict = dict([(f, mf) for f, mf in zip(valX, valY)])
-
-# Setup datagens
-train_gen = PngDataGenerator(trainX,
-                             train_dict,
-                             **train_params)
-val_gen = PngDataGenerator(valX,
-                           val_dict,
-                           **val_params)
+train_gen,val_gen = get_seg_datagen(pos_img_path,pos_mask_path,train_params,val_params,val_split)
 
 
 # Create callbacks
@@ -207,6 +190,8 @@ history2 = model.fit_generator(generator=train_gen,
                                workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
                                validation_data=val_gen)
 
+# rename best weights
+RenameWeights(best_weight_path)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~~~ Full Size Training ~~~~~~~
@@ -217,25 +202,22 @@ print('Setting up 1024 training')
 
 # make full-size model
 full_model = BlockModel2D((1024, 1024, n_channels), filt_num=16, numBlocks=4)
-h5files = glob('*.h5')
-load_file = max(h5files, key=os.path.getctime)
-full_model.load_weights(load_file)
+full_model.load_weights(best_weight_path)
 
 # Compile model
 full_model.compile(Adam(lr=learnRate), loss=dice_coef_loss)
+
+# Set weight paths
+cur_weight_path = weight_filepath.format('1024train')
+best_weight_path = best_weight_filepath.format('1024train')
 # Create callbacks
-cb_check = ModelCheckpoint(weight_filepath, monitor='val_loss',
+cb_check = ModelCheckpoint(cur_weight_path, monitor='val_loss',
                            verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
 cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=3, verbose=1)
 
 # Setup full size datagens
-train_gen = PngDataGenerator(trainX,
-                             train_dict,
-                             **full_train_params)
-val_gen = PngDataGenerator(valX,
-                           val_dict,
-                           **full_val_params)
+train_gen,val_gen = get_seg_datagen(pos_img_path,pos_mask_path,full_train_params,full_val_params,val_split)
 
 print('---------------------------------')
 print('---- Starting 1024-training -----')
@@ -249,9 +231,4 @@ history_full = full_model.fit_generator(generator=train_gen,
 
 
 # Rename best weights
-h5files = glob('*.h5')
-load_file = max(h5files, key=os.path.getctime)
-os.rename(load_file, 'Best_Kaggle_weights_wpretrainfull.h5')
-
-print('Renamed weights file {} to {}'.format(
-    load_file, 'Best_Kaggle_weights_wpretrainfull.h5'))
+RenameWeights(best_weight_path)
