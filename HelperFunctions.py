@@ -83,6 +83,7 @@ def get_class_datagen(pos_datapath, neg_datapath, train_params, val_params, val_
     class_weight_dict = dict(enumerate(class_weights))
 
     # Split into test/validation sets
+    rng = np.random.RandomState(seed=1)
     pre_trainX, pre_valX, pre_trainY, pre_valY = train_test_split(
         pretrain_img_files, pretrain_labels, test_size=val_split, random_state=rng, shuffle=True)
 
