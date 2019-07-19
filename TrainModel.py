@@ -1,3 +1,5 @@
+# %% Setup
+import time
 import os
 from glob import glob
 from os.path import join
@@ -36,13 +38,13 @@ except Exception as e:
 # ~~~~~~~~~~~~~~~~~~~~~~
 
 # Setup data
-pre_train_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/Pneumothorax/'
-pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/No_Finding/'
+pre_train_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/Pneumothorax_norm/'
+pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/No_Finding_norm/'
 
 pos_img_path = '/data/Kaggle/pos-norm-png'
 pos_mask_path = '/data/Kaggle/pos-mask-png'
 
-train_datapath = '/data/Kaggle/train-png'
+train_datapath = '/data/Kaggle/train-norm-png-V2'
 train_mask_path = '/data/Kaggle/train-mask'
 
 pretrain_weights_filepath = 'Pretrain_class_weights.h5'
@@ -52,7 +54,7 @@ best_weight_filepath = 'Best_Kaggle_Weights_{}.h5'
 # pre-train parameters
 pre_im_dims = (512, 512)
 pre_n_channels = 1
-pre_batch_size = 8
+pre_batch_size = 16
 pre_val_split = .15
 pre_epochs = 2
 pre_multi_process = False
@@ -63,7 +65,7 @@ n_channels = 1
 batch_size = 4
 learnRate = 1e-4
 val_split = .2
-epochs = [2, 2]  # epochs before and after unfreezing weights
+epochs = [4, 4]  # epochs before and after unfreezing weights
 multi_process = True
 
 # model parameters
@@ -79,7 +81,7 @@ val_params = get_val_params(batch_size, im_dims, n_channels)
 full_train_params = get_train_params(2, (1024, 1024), 1)
 full_val_params = get_val_params(2, (1024, 1024), 1)
 
-# ~~~~~~~~~~~~~~~~~~~~~~~
+# %% ~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~Pre-training~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -101,8 +103,6 @@ pre_model.compile(Adam(), loss='binary_crossentropy', metrics=['accuracy'])
 # Create callbacks
 cb_check = ModelCheckpoint(pretrain_weights_filepath, monitor='val_loss',
                            verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
-cb_plateau = ReduceLROnPlateau(
-    monitor='val_loss', factor=.5, patience=3, verbose=1)
 
 print('---------------------------------')
 print('----- Starting pre-training -----')
@@ -111,7 +111,7 @@ print('---------------------------------')
 # Train model
 pre_history = pre_model.fit_generator(generator=pre_train_gen,
                                       epochs=pre_epochs, use_multiprocessing=pre_multi_process,
-                                      workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
+                                      workers=8, verbose=1, callbacks=[cb_check],
                                       class_weight=class_weights,
                                       validation_data=pre_val_gen)
 
@@ -140,7 +140,7 @@ print('% Negative: {:.02f}'.format(100*(tn+fn)/totalNum))
 print('% Accuracy: {:.02f}'.format(100*(tp+tn)/totalNum))
 print('-----------------------')
 
-# ~~~~~~~~~~~~~~~~~~~~~~~
+# %% ~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~~~ Training ~~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -151,7 +151,8 @@ model = ConvertEncoderToCED(pre_model)
 
 # create segmentation datagens
 # using positive images only
-train_gen,val_gen = get_seg_datagen(pos_img_path,pos_mask_path,train_params,val_params,val_split)
+train_gen, val_gen = get_seg_datagen(
+    pos_img_path, pos_mask_path, train_params, val_params, val_split)
 
 
 # Create callbacks
@@ -193,7 +194,7 @@ history2 = model.fit_generator(generator=train_gen,
 # rename best weights
 RenameWeights(best_weight_path)
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# %% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~~~ Full Size Training ~~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -217,7 +218,8 @@ cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=3, verbose=1)
 
 # Setup full size datagens
-train_gen,val_gen = get_seg_datagen(pos_img_path,pos_mask_path,full_train_params,full_val_params,val_split)
+train_gen, val_gen = get_seg_datagen(
+    pos_img_path, pos_mask_path, full_train_params, full_val_params, val_split)
 
 print('---------------------------------')
 print('---- Starting 1024-training -----')
@@ -232,3 +234,20 @@ history_full = full_model.fit_generator(generator=train_gen,
 
 # Rename best weights
 RenameWeights(best_weight_path)
+time.sleep(5)
+# %% make some demo images
+for rep in range(2):
+    testX, testY = val_gen.__getitem__(rep)
+
+    full_model.load_weights(best_weight_path)
+    preds = full_model.predict_on_batch(testX, verbose=1)
+
+    from VisTools import DisplayDifferenceMask
+    import numpy as np
+    testX = np.random.rand(2, 20, 20, 1)
+    testY = np.random.rand(2, 20, 20, 1)
+    preds = np.random.rand(2, 20, 20, 1)
+    for im, mask, pred in zip(testX, testY, preds):
+        DisplayDifferenceMask(im[..., 0], mask[..., 0], pred[..., 0])
+
+# %%
