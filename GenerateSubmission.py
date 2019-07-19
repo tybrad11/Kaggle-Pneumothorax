@@ -32,8 +32,8 @@ def splitfile(file):
 
 
 test_datapath = '/data/Kaggle/test-png'
-weight_filepath = 'Best_Kaggle_weights_wpretrain.h5'
-submission_filepath = 'Test_Submission_v1.csv'
+weight_filepath = 'Best_Kaggle_weights_wpretrainfull.h5'
+submission_filepath = 'Submission_v1.csv'
 
 # parameters
 batch_size = 8
@@ -43,22 +43,10 @@ n_channels = 1
 # Get list of files
 img_files = natsorted(glob(join(test_datapath, '*.png')))
 
-def normalize_image(x):
-    x = x.copy()
-    low_cut = np.percentile(x, 5)
-    high_cut = np.percentile(x, 95)
-    x -= low_cut
-    x /= high_cut
-    x[x < 0] = 0.
-    x[x > 1] = 0.
-    return x
-
 def LoadImg(f, dims):
     img = Image.open(f)
     img = cv2.resize(np.array(img), dims).astype(np.float)
-    img = normalize_image(img)
-    img -= img.mean()
-    img /= img.std()
+    img /= 255.
     return img
 
 
@@ -98,12 +86,14 @@ for ind, cur_file in enumerate(tqdm(img_files)):
         cur_rle = mask2rle(temp_mask, 1024, 1024)
     else:
         cur_rle = -1
-    submission_data = [cur_id, cur_rle]
+    submission_data.append([cur_id, cur_rle])
 
 # write to csv
 tqdm.write('Writing csv...')
-with open(submission_filepath, mode='w') as f:
+with open(submission_filepath, mode='w',newline='') as f:
     writer = csv.writer(f, delimiter=',')
-    writer.writerow(submission_data)
+    writer.writerow(['ImageId','EncodedPixels'])
+    for data in tqdm(submission_data):
+        writer.writerow(data)
 
 print('Done')
