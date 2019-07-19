@@ -101,7 +101,7 @@ class PngDataGenerator(keras.utils.Sequence):
                 im = im[..., 0]
             if im.shape[:2] != self.dim:
                 im = cv2.resize(im, self.dim)
-            im = im[..., np.newaxis]
+            im = im[..., np.newaxis].astype(np.float)
 
             # normalize to [0,1]
             im /= 255.
@@ -113,7 +113,7 @@ class PngDataGenerator(keras.utils.Sequence):
             # resize if needed
             if mask.shape[:2] != self.dim:
                 mask = cv2.resize(mask, self.dim)
-            mask = mask[..., np.newaxis]
+            mask = mask[..., np.newaxis].astype(np.float)
 
             # normalize to [0,1]
             mask /= 255.
@@ -477,7 +477,7 @@ class PngClassDataGenerator(PngDataGenerator):
                 im = im[..., 0]
             if im.shape[:2] != self.dim:
                 im = cv2.resize(im, self.dim)
-            im = im[..., np.newaxis]
+            im = im[..., np.newaxis].astype(np.float)
 
             # normalize to [0,1]
             im /= 255.
