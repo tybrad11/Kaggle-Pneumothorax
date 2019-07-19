@@ -6,3 +6,4 @@ __pycache__/Datagen.cpython-37.pyc
 __pycache__/Losses.cpython-37.pyc
 *.h5
 __pycache__/ProcessMasks.cpython-37.pyc
+__pycache__/HelperFunctions.cpython-37.pyc
