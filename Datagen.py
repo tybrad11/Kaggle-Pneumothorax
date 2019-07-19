@@ -115,9 +115,6 @@ class PngDataGenerator(keras.utils.Sequence):
                 mask = cv2.resize(mask, self.dim)
             mask = mask[..., np.newaxis].astype(np.float)
 
-            # normalize to [0,1]
-            mask /= 255.
-
             # apply random transformation
             params = self.get_random_transform(im.shape)
             x = self.apply_transform(im, params)
