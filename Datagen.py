@@ -474,7 +474,10 @@ class PngClassDataGenerator(PngDataGenerator):
                 im = im[..., 0]
             if im.shape[:2] != self.dim:
                 im = cv2.resize(im, self.dim)
+            
             im = im[..., np.newaxis].astype(np.float)
+            if self.n_channels > 1:
+                im = np.repeat(im,self.n_channels,axis=-1)
 
             # normalize to [0,1]
             im /= 255.
