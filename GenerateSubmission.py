@@ -31,8 +31,8 @@ def splitfile(file):
     return os.path.splitext(file)[0]
 
 
-test_datapath = '/data/Kaggle/test-norm-png'
-weight_filepath = 'Best_Kaggle_weights_1024train.h5'
+test_datapath = '/data/Kaggle/test-norm-png-V2'
+weight_filepath = 'Best_Kaggle_Weights_1024train.h5'
 submission_filepath = 'Submission_v2.csv'
 
 # parameters
@@ -43,6 +43,7 @@ n_channels = 1
 # Get list of files
 img_files = natsorted(glob(join(test_datapath, '*.png')))
 
+
 def LoadImg(f, dims):
     img = Image.open(f)
     img = cv2.resize(np.array(img), dims).astype(np.float)
@@ -52,7 +53,8 @@ def LoadImg(f, dims):
 
 # load files into array
 tqdm.write('Loading images...')
-test_imgs = np.stack([LoadImg(f, im_dims) for f in tqdm(img_files)])[..., np.newaxis]
+test_imgs = np.stack([LoadImg(f, im_dims)
+                      for f in tqdm(img_files)])[..., np.newaxis]
 
 # Create model
 model = BlockModel2D(input_shape=im_dims+(n_channels,),
@@ -77,23 +79,23 @@ for ind, cur_file in enumerate(tqdm(img_files)):
     processed_mask = CleanMask_v1(cur_mask)
     lbl_mask, numObj = scipy_label(processed_mask)
     if numObj > 0:
-        temp_mask = np.zeros_like(cur_mask)
-        temp_mask[lbl_mask == label] = 1
-        temp_mask = cv2.resize(temp_mask.astype(np.float), (1024, 1024))
-        temp_mask[temp_mask < .5] = 0
-        temp_mask[temp_mask > 0] = 255
-        temp_mask = np.transpose(temp_mask)
-        cur_rle = mask2rle(temp_mask, 1024, 1024)
+        processed_mask[processed_mask > 0] = 255
+        processed_mask = np.transpose(processed_mask)
+        cur_rle = mask2rle(processed_mask, 1024, 1024)
     else:
         cur_rle = -1
     submission_data.append([cur_id, cur_rle])
 
 # write to csv
 tqdm.write('Writing csv...')
-with open(submission_filepath, mode='w',newline='') as f:
+with open(submission_filepath, mode='w', newline='') as f:
     writer = csv.writer(f, delimiter=',')
-    writer.writerow(['ImageId','EncodedPixels'])
+    writer.writerow(['ImageId', 'EncodedPixels'])
     for data in tqdm(submission_data):
         writer.writerow(data)
+
+# display some images
+from VisTools import mask_viewer0
+mask_viewer0(test_imgs[:100,...,0],masks[:100,...,0])
 
 print('Done')
