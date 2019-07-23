@@ -49,14 +49,14 @@ train_mask_path = '/data/Kaggle/train-mask'
 
 pretrain_weights_filepath = 'Pretrain_class_weights.h5'
 weight_filepath = 'Kaggle_Weights_{}_{{epoch:02d}}-{{val_loss:.4f}}.h5'
-best_weight_filepath = 'Best_Kaggle_Weights_{}.h5'
+best_weight_filepath = 'Best_Kaggle_Weights_{}_v2.h5'
 
 # pre-train parameters
 pre_im_dims = (512, 512)
 pre_n_channels = 1
 pre_batch_size = 16
 pre_val_split = .15
-pre_epochs = 2
+pre_epochs = 8
 pre_multi_process = False
 
 # train parameters
@@ -65,7 +65,8 @@ n_channels = 1
 batch_size = 4
 learnRate = 1e-4
 val_split = .2
-epochs = [4, 4]  # epochs before and after unfreezing weights
+epochs = [5, 35]  # epochs before and after unfreezing weights
+full_epochs = 20 # epochs trained on 1024 data
 multi_process = True
 
 # model parameters
@@ -227,7 +228,7 @@ print('---------------------------------')
 
 # train full size model
 history_full = full_model.fit_generator(generator=train_gen,
-                                        epochs=2, use_multiprocessing=multi_process,
+                                        epochs=full_epochs, use_multiprocessing=multi_process,
                                         workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
                                         validation_data=val_gen)
 
@@ -235,19 +236,19 @@ history_full = full_model.fit_generator(generator=train_gen,
 # Rename best weights
 RenameWeights(best_weight_path)
 time.sleep(5)
+
 # %% make some demo images
+
+full_model.load_weights(best_weight_path)
+from VisTools import DisplayDifferenceMask
+import numpy as np
+
 for rep in range(2):
     testX, testY = val_gen.__getitem__(rep)
+    preds = full_model.predict_on_batch(testX)
 
-    full_model.load_weights(best_weight_path)
-    preds = full_model.predict_on_batch(testX, verbose=1)
-
-    from VisTools import DisplayDifferenceMask
-    import numpy as np
-    testX = np.random.rand(2, 20, 20, 1)
-    testY = np.random.rand(2, 20, 20, 1)
-    preds = np.random.rand(2, 20, 20, 1)
     for im, mask, pred in zip(testX, testY, preds):
         DisplayDifferenceMask(im[..., 0], mask[..., 0], pred[..., 0])
 
-# %%
+
+#%%

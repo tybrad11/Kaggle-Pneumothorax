@@ -31,13 +31,13 @@ def splitfile(file):
     return os.path.splitext(file)[0]
 
 
-test_datapath = '/data/Kaggle/test-png'
-weight_filepath = 'Best_Kaggle_weights_wpretrainfull.h5'
-submission_filepath = 'Submission_v1.csv'
+test_datapath = '/data/Kaggle/test-norm-png'
+weight_filepath = 'Best_Kaggle_weights_1024train.h5'
+submission_filepath = 'Submission_v2.csv'
 
 # parameters
-batch_size = 8
-im_dims = (512, 512)
+batch_size = 4
+im_dims = (1024, 1024)
 n_channels = 1
 
 # Get list of files
@@ -61,7 +61,7 @@ model = BlockModel2D(input_shape=im_dims+(n_channels,),
 model.load_weights(weight_filepath)
 
 # Get predicted masks
-print('Getting predicted masks...')
+tqdm.write('Getting predicted masks...')
 masks = model.predict(test_imgs, batch_size=batch_size, verbose=1)
 
 # data to write to csv
