@@ -63,8 +63,8 @@ learnRate = 1e-4
 filt_nums = 16
 num_blocks = 5
 val_split = .2
-epochs = 1
-full_epochs = 1  # epochs trained on 1024 data
+epochs = 20
+full_epochs = 20  # epochs trained on 1024 data
 multi_process = False
 
 # datagen params
@@ -200,6 +200,10 @@ print('----------------------------------')
 print('---- Setting up 1024 training ----')
 print('----------------------------------')
 
+# rebuild model
+full_model = Inception_model(input_shape=(1024,1024)+(n_channels,))
+full_model.load_weights(cur_weights_path)
+
 # Get datagens for training
 full_train_gen, full_val_gen, class_weights = get_class_datagen(
     train_pos_datapath, train_neg_datapath, full_train_params, full_val_params, val_split)
@@ -214,19 +218,19 @@ print('----- Starting 1024 training -----')
 print('----------------------------------')
 
 # Train model
-history = model.fit_generator(generator=full_train_gen,
-                              epochs=epochs, use_multiprocessing=multi_process,
+history = full_model.fit_generator(generator=full_train_gen,
+                              epochs=full_epochs, use_multiprocessing=multi_process,
                               workers=8, verbose=1, callbacks=[cb_check],
                               class_weight=class_weights,
                               validation_data=full_val_gen)
 
 # Load best weights
-model.load_weights(cur_weights_path)
+full_model.load_weights(cur_weights_path)
 
 # Calculate confusion matrix
 print('Calculating classification confusion matrix...')
 val_gen.shuffle = False
-preds = model.predict_generator(val_gen, verbose=1)
+preds = full_model.predict_generator(val_gen, verbose=1)
 labels = [val_gen.labels[f] for f in val_gen.list_IDs]
 y_pred = np.rint(preds)
 totalNum = len(y_pred)
