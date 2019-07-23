@@ -260,10 +260,10 @@ def ConvertEncoderToCED(model):
 
 def Inception_model(input_shape=(299, 299, 3)):
     incep_model = InceptionV3(
-        include_top=False, weights=None, input_shape=input_shape, pooling=None)
+        include_top=False, weights=None, input_shape=input_shape, pooling='avg')
     input_layer = incep_model.input
     incep_output = incep_model.output
-    x = Conv2D(16, (3, 3), activation='relu')(incep_output)
-    x = Flatten()(x)
-    x = Dense(1, activation='sigmoid')(x)
+    # x = Conv2D(16, (3, 3), activation='relu')(incep_output)
+    # x = Flatten()(x)
+    x = Dense(1, activation='sigmoid')(incep_output)
     return Model(inputs=input_layer, outputs=x)
