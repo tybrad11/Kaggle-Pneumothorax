@@ -170,9 +170,9 @@ model.load_weights(cur_weights_path)
 
 # Calculate confusion matrix
 print('Calculating classification confusion matrix...')
-val_gen.shuffle = False
-preds = model.predict_generator(val_gen, verbose=1)
-labels = [val_gen.labels[f] for f in val_gen.list_IDs]
+full_val_gen.shuffle = False
+preds = model.predict_generator(full_val_gen, verbose=1)
+labels = [full_val_gen.labels[f] for f in full_val_gen.list_IDs]
 y_pred = np.rint(preds)
 totalNum = len(y_pred)
 y_true = np.rint(labels)[:totalNum]
@@ -203,6 +203,10 @@ print('----------------------------------')
 # rebuild model
 full_model = Inception_model(input_shape=(1024,1024)+(n_channels,))
 full_model.load_weights(cur_weights_path)
+
+# Compile model
+full_model.compile(Adam(lr=learnRate), loss='binary_crossentropy',
+              metrics=['accuracy'])
 
 # Get datagens for training
 full_train_gen, full_val_gen, class_weights = get_class_datagen(
