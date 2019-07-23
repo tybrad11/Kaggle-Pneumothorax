@@ -11,4 +11,4 @@ def CleanMask_v1(mask):
     for label in range(1, numObj+1):
         if np.sum(lbl_mask == label) > minimum_cc_sum:
             processed_mask[lbl_mask == label] = 1
-    return processed_mask
+    return processed_mask.astype(np.int)
