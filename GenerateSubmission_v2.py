@@ -125,6 +125,36 @@ with open(submission_filepath, mode='w', newline='') as f:
     for data in submission_data:
         writer.writerow(data)
 
+# write some images to png
+def SaveImMaskAsPng(img,mask,name,sdir='.'):
+    # make mask into rgba
+    yellow_mask = np.repeat(mask,4,axis=-1)
+    yellow_mask[...,2] = 0
+    yellow_mask[...,3] = .3*yellow_mask[...,3]
+    ymask = (255*yellow_mask).astype(np.uint8)
+    # make background image into rgb and save
+    bkgd = Image.fromarray((255*img).astype(np.uint8)).convert('RGB')
+    im_name = '{}_image.png'.format(name)
+    bkgd.save(join(sdir,im_name))
+    # paste on mask image and save
+    fgd = Image.fromarray(ymask)
+    bkgd.paste(fgd,(0,0),fgd)    
+    msk_name = '{}_w_mask.png'.format(name)
+    bkgd.save(join(sdir,msk_name))
+
+output_dir = 'SampleImagesAndMasks'
+if not os.path.exists(output_dir):
+    os.mkdir(output_dir)
+tqdm.write('Saving sample images and masks...')
+n = 50
+name = 'Sample_{}_{}'
+for ind,img,mask,label in tqdm(zip(range(n),test_imgs[:n],masks[:n],pred_labels[:n]),total=n):
+    if label:
+        cur_name = name.format(ind,'pos')
+    else:
+        cur_name = name.format(ind,'neg')
+    SaveImMaskAsPng(img[...,0],mask,cur_name,output_dir)
+
 # display some images
 mask_viewer0(test_imgs[:100,...,0],masks[:100,...,0],labels=pred_labels[:100])
 
