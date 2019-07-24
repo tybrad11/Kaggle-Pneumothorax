@@ -1,9 +1,9 @@
+import concurrent.futures
 import csv
 import os
 import sys
 from glob import glob
 from os.path import join
-import concurrent.futures
 
 import cv2
 import GPUtil
@@ -16,8 +16,9 @@ from scipy.ndimage.measurements import label as scipy_label
 from tqdm import tqdm
 
 from mask_functions_pneumothorax import mask2rle, rle2mask
-from Models import BlockModel2D
+from Models import BlockModel2D, Inception_model
 from ProcessMasks import CleanMask_v1
+from VisTools import mask_viewer0
 
 try:
     if not 'DEVICE_ID' in locals():
@@ -34,6 +35,7 @@ def splitfile(file):
 
 
 test_datapath = '/data/Kaggle/test-norm-png-V2'
+class_weights_filepath = 'Best_Kaggle_Classification_Weights_1024train.h5'
 weight_filepath = 'Best_Kaggle_Weights_1024train.h5'
 submission_filepath = 'Submission_v3.csv'
 
@@ -52,10 +54,13 @@ def LoadImg(f, dims=(1024,1024)):
     img /= 255.
     return img
 
-def GetSubData(file,mask):
+def GetSubData(file,label,mask):
     mask = mask[...,0]
     mask = (mask > .5).astype(np.int)
     fid = splitfile(file)
+
+    if label == 0:
+        return [fid,-1]
 
     processed_mask = CleanMask_v1(mask)
     lbl_mask, numObj = scipy_label(processed_mask)
@@ -77,7 +82,23 @@ with concurrent.futures.ProcessPoolExecutor() as executor:
         img_list.append(img_array)
 test_imgs = np.stack(img_list)[...,np.newaxis]
 
+
+# Load classification model
+tqdm.write('Loading classification model...')
+class_model = Inception_model(input_shape=(1024,1024)+(n_channels,))
+class_model.load_weights(class_weights_filepath)
+
+# Get classification predictions
+tqdm.write('Making classification predictions...')
+pred_labels = class_model.predict(test_imgs,batch_size=4,verbose=1)
+pred_labels = np.rint(pred_labels)[:,0]
+
+# remove model
+del class_model
+tqdm.write('Finished with classification model')
+
 # Create model
+tqdm.write('Loading segmentation model...')
 model = BlockModel2D(input_shape=im_dims+(n_channels,),
                      filt_num=16, numBlocks=4)
 # Load weights
@@ -92,7 +113,7 @@ submission_data = []
 # process mask
 tqdm.write('Processing masks...')
 with concurrent.futures.ProcessPoolExecutor() as executor:
-    for sub_data in tqdm(executor.map(GetSubData,img_files,masks),total=len(img_files)):
+    for sub_data in tqdm(executor.map(GetSubData,img_files,pred_labels,masks),total=len(img_files)):
         # put results into correct output list
         submission_data.append(sub_data)
 
@@ -105,7 +126,6 @@ with open(submission_filepath, mode='w', newline='') as f:
         writer.writerow(data)
 
 # display some images
-from VisTools import mask_viewer0
-mask_viewer0(test_imgs[:100,...,0],masks[:100,...,0])
+mask_viewer0(test_imgs[:100,...,0],masks[:100,...,0],labels=pred_labels[:100])
 
 print('Done')
