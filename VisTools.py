@@ -148,7 +148,7 @@ def next_slice(ax):
         ax.lblobj.set_text(ax.labels[ax.index])
 
 #
-def mask_viewer0(imvol,maskvol,maskvol2=None,name='Mask Display'):
+def mask_viewer0(imvol,maskvol,maskvol2=None,labels=[],name='Mask Display'):
     if maskvol2 is None:
         # display single mask
         msksiz = np.r_[maskvol.shape,4]
@@ -197,6 +197,18 @@ def mask_viewer0(imvol,maskvol,maskvol2=None,name='Mask Display'):
     ax.set_axis_off()
     txtobj = plt.text(0.05, .95,fig.index+1, ha='left', va='top',color='red',
                       transform=ax.transAxes)
+    if 'labels' in locals():
+        if len(labels)==imvol.shape[0]:
+            fig.labels = labels
+            lblobj = plt.text(0.9,.98,fig.labels[fig.index],ha='right',va='top',
+                               color='yellow',transform=ax.transAxes)
+            fig.lblobj = lblobj
+            fig.has_labels = True
+        else:
+            fig.has_labels = False
+    else:
+        fig.has_labels=False
+
     fig.imvol = imvol
     fig.maskvol = msk
     fig.imobj = imobj
@@ -221,6 +233,8 @@ def previous_slice_m0(fig):
     fig.index = np.max([np.min([fig.index-1,imvol.shape[0]-1]),0])
     fig.imobj.set_data(imvol[fig.index,:,:])
     fig.mskobj.set_data(maskvol[fig.index,:,:,:])
+    if fig.has_labels:
+        fig.lblobj.set_text(fig.labels[fig.index])
     fig.canvas.draw()
 
 def next_slice_m0(fig):
@@ -230,6 +244,8 @@ def next_slice_m0(fig):
     fig.index = np.max([np.min([fig.index+1,imvol.shape[0]-1]),0])
     fig.imobj.set_data(imvol[fig.index,:,:])
     fig.mskobj.set_data(maskvol[fig.index,:,:,:])
+    if fig.has_labels:
+        fig.lblobj.set_text(fig.labels[fig.index])
     fig.canvas.draw()
 #
 def slice_viewer4D(volume,title='', vrange=[0,1]):
