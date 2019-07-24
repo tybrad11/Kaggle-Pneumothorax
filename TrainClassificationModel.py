@@ -1,6 +1,6 @@
 # %% Setup
-import time
 import os
+import time
 from glob import glob
 from os.path import join
 
@@ -8,8 +8,9 @@ import GPUtil
 import numpy as np
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
 from keras.optimizers import Adam
+from matplotlib import pyplot as plt
 from natsort import natsorted
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import auc, confusion_matrix, roc_curve
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 
@@ -233,9 +234,9 @@ full_model.load_weights(cur_weights_path)
 
 # Calculate confusion matrix
 print('Calculating classification confusion matrix...')
-val_gen.shuffle = False
-preds = full_model.predict_generator(val_gen, verbose=1)
-labels = [val_gen.labels[f] for f in val_gen.list_IDs]
+full_val_gen.shuffle = False
+preds = full_model.predict_generator(full_val_gen, verbose=1)
+labels = [full_val_gen.labels[f] for f in full_val_gen.list_IDs]
 y_pred = np.rint(preds)
 totalNum = len(y_pred)
 y_true = np.rint(labels)[:totalNum]
@@ -254,3 +255,33 @@ print('% Accuracy: {:.02f}'.format(100*(tp+tn)/totalNum))
 print('% Sensitivity: {:.02f}'.format(100*(tp)/(tp+fn)))
 print('% Specificity: {:.02f}'.format(100*(tn)/(tn+fp)))
 print('-----------------------')
+
+
+# Make ROC curve
+fpr, tpr, thresholds = roc_curve(y_true, preds, pos_label=1)
+roc_auc = auc(fpr, tpr)
+plt.figure()
+lw = 2
+plt.plot(fpr, tpr, color='darkorange',
+         lw=lw, label='ROC curve (area = {:0.2f})'.format(roc_auc))
+plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic for pneumothorax')
+plt.legend(loc="lower right")
+plt.show()
+
+
+# Get and display a few predictions
+for ind in range(5):
+    b_ind = np.random.randint(0,len(full_val_gen))
+    valX, valY = full_val_gen.__getitem__(b_ind)
+    preds = full_model.predict_on_batch(valX)
+    cur_im = valX[0]
+    disp_im = np.concatenate([cur_im[..., c]
+                              for c in range(cur_im.shape[-1])], axis=1)
+    plt.imshow(disp_im, cmap='gray')
+    plt.title('Predicted: {} Actual: {}'.format(preds[0], valY[0]))
+    plt.show()
