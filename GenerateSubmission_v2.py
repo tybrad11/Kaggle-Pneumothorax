@@ -19,6 +19,9 @@ from mask_functions_pneumothorax import mask2rle, rle2mask
 from Models import BlockModel2D, Inception_model
 from ProcessMasks import CleanMask_v1
 from VisTools import mask_viewer0
+from time import time
+
+start_time = time()
 
 try:
     if not 'DEVICE_ID' in locals():
@@ -36,13 +39,14 @@ def splitfile(file):
 
 test_datapath = '/data/Kaggle/test-norm-png-V2'
 class_weights_filepath = 'Best_Kaggle_Classification_Weights_1024train.h5'
-weight_filepath = 'Best_Kaggle_Weights_1024train.h5'
-submission_filepath = 'Submission_v3.csv'
+weight_filepath = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024train_v2.h5']
+submission_filepath = 'Submission_v6.csv'
 
 # parameters
 batch_size = 4
 im_dims = (1024, 1024)
 n_channels = 1
+thresh = .75 # threshold for classification model
 
 # Get list of files
 img_files = natsorted(glob(join(test_datapath, '*.png')))
@@ -72,6 +76,20 @@ def GetSubData(file,label,mask):
         rle = -1
     return [fid, rle]
 
+def GetBlockModelMasks(weights_path,test_imgs,batch_size):
+    # Create model
+    tqdm.write('Loading segmentation model...')
+    model = BlockModel2D(input_shape=im_dims+(n_channels,),
+                        filt_num=16, numBlocks=4)
+    # Load weights
+    model.load_weights(weights_path)
+
+    # Get predicted masks
+    tqdm.write('Getting predicted masks...')
+    masks = model.predict(test_imgs, batch_size=batch_size, verbose=0)
+    del model
+    return masks
+
 
 # load files into array
 tqdm.write('Loading images...')
@@ -91,22 +109,20 @@ class_model.load_weights(class_weights_filepath)
 # Get classification predictions
 tqdm.write('Making classification predictions...')
 pred_labels = class_model.predict(test_imgs,batch_size=4,verbose=1)
-pred_labels = np.rint(pred_labels)[:,0]
+pred_labels = (pred_labels[:,0]>thresh).astype(np.int)
 
 # remove model
 del class_model
 tqdm.write('Finished with classification model')
 
-# Create model
-tqdm.write('Loading segmentation model...')
-model = BlockModel2D(input_shape=im_dims+(n_channels,),
-                     filt_num=16, numBlocks=4)
-# Load weights
-model.load_weights(weight_filepath)
+# Get masks from segmentation model ensemble
+tqdm.write('Starting model ensemble...')
+all_masks = [GetBlockModelMasks(p,test_imgs,batch_size) for p in tqdm(weight_filepath)]
 
-# Get predicted masks
-tqdm.write('Getting predicted masks...')
-masks = model.predict(test_imgs, batch_size=batch_size, verbose=1)
+# ensemble masks together
+# just averaging right now
+masks = sum(all_masks)/len(all_masks)
+del all_masks
 
 # data to write to csv
 submission_data = []
@@ -155,7 +171,11 @@ for ind,img,mask,label in tqdm(zip(range(n),test_imgs[:n],masks[:n],pred_labels[
         cur_name = name.format(ind,'neg')
     SaveImMaskAsPng(img[...,0],mask,cur_name,output_dir)
 
-# display some images
-mask_viewer0(test_imgs[:100,...,0],masks[:100,...,0],labels=pred_labels[:100])
-
 print('Done')
+finish_time = time()
+from datetime import timedelta
+print('Time elapsed: {}'.format(timedelta(seconds=finish_time-start_time)))
+
+
+# display some images
+# mask_viewer0(test_imgs[:100,...,0],.5*masks[:100,...,0],labels=pred_labels[:100])
