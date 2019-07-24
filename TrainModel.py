@@ -49,14 +49,14 @@ train_mask_path = '/data/Kaggle/train-mask'
 
 pretrain_weights_filepath = 'Pretrain_class_weights.h5'
 weight_filepath = 'Kaggle_Weights_{}_{{epoch:02d}}-{{val_loss:.4f}}.h5'
-best_weight_filepath = 'Best_Kaggle_Weights_{}_v2.h5'
+best_weight_filepath = 'Best_Kaggle_Weights_{}_v3.h5'
 
 # pre-train parameters
 pre_im_dims = (512, 512)
 pre_n_channels = 1
 pre_batch_size = 16
 pre_val_split = .15
-pre_epochs = 8
+pre_epochs = 10
 pre_multi_process = False
 
 # train parameters
@@ -64,9 +64,9 @@ im_dims = (512, 512)
 n_channels = 1
 batch_size = 4
 learnRate = 1e-4
-val_split = .2
-epochs = [5, 35]  # epochs before and after unfreezing weights
-full_epochs = 20 # epochs trained on 1024 data
+val_split = .15
+epochs = [6, 50]  # epochs before and after unfreezing weights
+full_epochs = 30 # epochs trained on 1024 data
 multi_process = True
 
 # model parameters
