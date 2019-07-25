@@ -6,6 +6,9 @@ import numpy as np
 from natsort import natsorted
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
+from keras.layers import Conv2D
+from keras.models import Model
+
 
 from Datagen import PngClassDataGenerator, PngDataGenerator
 
@@ -121,3 +124,13 @@ def get_seg_datagen(img_datapath, mask_datapath, train_params, val_params, val_s
                                val_dict,
                                **val_params)
     return train_gen, val_gen
+
+def ConvertModelOutputToLinear(model):
+    output_layer = model.layers.pop()
+    ksize = output_layer.kernel_size
+    weights = output_layer.get_weights()
+    numF = output_layer.get_weights()[0].shape[-1]
+    new_layer = Conv2D(numF,ksize,activation='linear')(model.layers[-1].output)
+    newModel = Model(model.input,new_layer)
+    newModel.layers[-1].set_weights(weights)
+    return newModel

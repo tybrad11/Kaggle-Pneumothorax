@@ -20,6 +20,8 @@ from Models import BlockModel2D, Inception_model
 from ProcessMasks import CleanMask_v1
 from VisTools import mask_viewer0
 from time import time
+from HelperFunctions import ConvertModelOutputToLinear
+import math
 
 start_time = time()
 
@@ -39,8 +41,8 @@ def splitfile(file):
 
 test_datapath = '/data/Kaggle/test-norm-png-V2'
 class_weights_filepath = 'Best_Kaggle_Classification_Weights_1024train.h5'
-weight_filepath = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024train_v2.h5']
-submission_filepath = 'Submission_v6.csv'
+weight_filepath = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024train_v2.h5','Best_Kaggle_Weights_1024train_v3.h5']
+submission_filepath = 'Submission_v7.csv'
 
 # parameters
 batch_size = 4
@@ -84,11 +86,17 @@ def GetBlockModelMasks(weights_path,test_imgs,batch_size):
     # Load weights
     model.load_weights(weights_path)
 
+    # convert to linear output layer
+    model = ConvertModelOutputToLinear(model)
+
     # Get predicted masks
     tqdm.write('Getting predicted masks...')
     masks = model.predict(test_imgs, batch_size=batch_size, verbose=0)
     del model
     return masks
+
+def sigmoid(x):
+    return 1 / (1 + math.e ** -x)
 
 
 # load files into array
@@ -121,7 +129,9 @@ all_masks = [GetBlockModelMasks(p,test_imgs,batch_size) for p in tqdm(weight_fil
 
 # ensemble masks together
 # just averaging right now
+# then apply sigmoid
 masks = sum(all_masks)/len(all_masks)
+masks = sigmoid(masks)
 del all_masks
 
 # data to write to csv
