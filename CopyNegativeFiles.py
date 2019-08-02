@@ -1,4 +1,5 @@
 import csv
+import tqdm
 csv_path = 'train-rle.csv'
 
 
@@ -14,9 +15,10 @@ neg_files = [f for i,f in enumerate(filenames) if rles[i]==' -1']
 
 from shutil import copyfile
 
-dest_path = '/data/Kaggle/neg-norm-png/{}.png'
+dest_path = '/data/Kaggle/neg-filt-png/{}.png'
 
-src_path = '/data/Kaggle/train-norm-png-V2/{}.png'
+src_path = '/data/Kaggle/train-png/{}.png'
 
-for f in neg_files:
+for f in tqdm.tqdm(neg_files):
     copyfile(src_path.format(f),dest_path.format(f))
+tqdm.tqdm.write('Done')
