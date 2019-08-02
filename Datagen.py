@@ -3,6 +3,7 @@ import cv2
 import keras
 import numpy as np
 from PIL import Image
+from skimage.exposure import equalize_adapthist
 
 try:
     import scipy
@@ -102,6 +103,10 @@ class PngDataGenerator(keras.utils.Sequence):
             if im.shape[:2] != self.dim:
                 im = cv2.resize(im, self.dim)
             im = im[..., np.newaxis].astype(np.float)
+
+            # apply CLAHE, if selected
+            if self.preprocessing_function == 'CLAHE':
+                im = equalize_adapthist(im)
 
             # normalize to [0,1]
             im /= 255.
@@ -478,6 +483,10 @@ class PngClassDataGenerator(PngDataGenerator):
             im = im[..., np.newaxis].astype(np.float)
             if self.n_channels > 1:
                 im = np.repeat(im,self.n_channels,axis=-1)
+            
+            # apply CLAHE, if selected
+            if self.preprocessing_function == 'CLAHE':
+                im = equalize_adapthist(im)
 
             # normalize to [0,1]
             im /= 255.
