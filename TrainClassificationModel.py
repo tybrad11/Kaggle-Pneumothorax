@@ -39,21 +39,25 @@ except Exception as e:
 # ~~~~~~~~~~~~~~~~~~~~~~
 
 # Setup data
-pre_train_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/Pneumothorax_norm/'
-pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/No_Finding_norm/'
+# pre_train_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/Pneumothorax_norm/'
+# pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/No_Finding_norm/'
+pre_train_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/Pneumothorax/'
+pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/No_Finding/'
 
-train_pos_datapath = '/data/Kaggle/pos-norm-png'
-train_neg_datapath = '/data/Kaggle/neg-norm-png'
+# train_pos_datapath = '/data/Kaggle/pos-norm-png'
+# train_neg_datapath = '/data/Kaggle/neg-norm-png'
+pos_img_path = '/data/Kaggle/pos-filt-png'
+
 
 pretrain_weights_filepath = 'Best_pretrain_class_weights.h5'
-train_weights_filepath = 'Best_Kaggle_Classification_Weights_{}.h5'
+train_weights_filepath = 'Best_Kaggle_Classification_Weights_{}_v2.h5'
 
 # pre-train parameters
 pre_im_dims = (512, 512)
 pre_n_channels = 1
 pre_batch_size = 16
 pre_val_split = .15
-pre_epochs = 2
+pre_epochs = 20
 pre_multi_process = False
 
 # train parameters
@@ -171,9 +175,9 @@ model.load_weights(cur_weights_path)
 
 # Calculate confusion matrix
 print('Calculating classification confusion matrix...')
-full_val_gen.shuffle = False
-preds = model.predict_generator(full_val_gen, verbose=1)
-labels = [full_val_gen.labels[f] for f in full_val_gen.list_IDs]
+val_gen.shuffle = False
+preds = model.predict_generator(val_gen, verbose=1)
+labels = [val_gen.labels[f] for f in val_gen.list_IDs]
 y_pred = np.rint(preds)
 totalNum = len(y_pred)
 y_true = np.rint(labels)[:totalNum]
