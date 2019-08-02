@@ -38,18 +38,20 @@ except Exception as e:
 # ~~~~~~~~~~~~~~~~~~~~~~
 
 # Setup data
-pre_train_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/Pneumothorax_norm/'
-pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/No_Finding_norm/'
+pre_train_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/Pneumothorax/'
+pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/No_Finding/'
 
-pos_img_path = '/data/Kaggle/pos-norm-png'
-pos_mask_path = '/data/Kaggle/pos-mask-png'
+# use normalized images
+# pos_img_path = '/data/Kaggle/pos-norm-png'
+# pos_mask_path = '/data/Kaggle/pos-mask-png'
 
-train_datapath = '/data/Kaggle/train-norm-png-V2'
-train_mask_path = '/data/Kaggle/train-mask'
+# use non-normalized images with large masks
+pos_img_path = '/data/Kaggle/pos-filt-png'
+pos_mask_path = '/data/Kaggle/pos-filt-mask-png'
 
 pretrain_weights_filepath = 'Pretrain_class_weights.h5'
 weight_filepath = 'Kaggle_Weights_{}_{{epoch:02d}}-{{val_loss:.4f}}.h5'
-best_weight_filepath = 'Best_Kaggle_Weights_{}_v3.h5'
+best_weight_filepath = 'Best_Kaggle_Weights_{}_v4.h5'
 
 # pre-train parameters
 pre_im_dims = (512, 512)
@@ -65,9 +67,9 @@ n_channels = 1
 batch_size = 4
 learnRate = 1e-4
 val_split = .15
-epochs = [6, 50]  # epochs before and after unfreezing weights
-full_epochs = 30 # epochs trained on 1024 data
-multi_process = True
+epochs = [10, 50]  # epochs before and after unfreezing weights
+full_epochs = 100 # epochs trained on 1024 data
+multi_process = False
 
 # model parameters
 filt_nums = 16
@@ -159,8 +161,15 @@ train_gen, val_gen = get_seg_datagen(
 # Create callbacks
 cur_weight_path = weight_filepath.format('512train')
 best_weight_path = best_weight_filepath.format('512train')
-cb_check = ModelCheckpoint(cur_weight_path, monitor='val_loss',
-                           verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
+if multi_process:
+    cb_check = ModelCheckpoint(cur_weight_path, monitor='val_loss',
+                               verbose=1, save_best_only=True,
+                               save_weights_only=True, mode='auto', period=1)
+else:
+    cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
+                               verbose=1, save_best_only=True,
+                               save_weights_only=True, mode='auto', period=1)
+
 cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=3, verbose=1)
 
@@ -173,7 +182,7 @@ print('---------------------------------')
 
 history = model.fit_generator(generator=train_gen,
                               epochs=epochs[0], use_multiprocessing=multi_process,
-                              workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
+                              workers=8, verbose=1, callbacks=[cb_plateau],
                               validation_data=val_gen)
 
 # make all layers trainable again
@@ -191,9 +200,9 @@ history2 = model.fit_generator(generator=train_gen,
                                epochs=epochs[1], use_multiprocessing=multi_process,
                                workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
                                validation_data=val_gen)
-
-# rename best weights
-RenameWeights(best_weight_path)
+if multi_process:
+    # rename best weights
+    RenameWeights(best_weight_path)
 
 # %% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~~~ Full Size Training ~~~~~~~
@@ -213,8 +222,14 @@ full_model.compile(Adam(lr=learnRate), loss=dice_coef_loss)
 cur_weight_path = weight_filepath.format('1024train')
 best_weight_path = best_weight_filepath.format('1024train')
 # Create callbacks
-cb_check = ModelCheckpoint(cur_weight_path, monitor='val_loss',
-                           verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
+if multi_process:
+    cb_check = ModelCheckpoint(cur_weight_path, monitor='val_loss',
+                               verbose=1, save_best_only=True,
+                               save_weights_only=True, mode='auto', period=1)
+else:
+    cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
+                               verbose=1, save_best_only=True,
+                               save_weights_only=True, mode='auto', period=1)
 cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=3, verbose=1)
 
@@ -234,8 +249,9 @@ history_full = full_model.fit_generator(generator=train_gen,
 
 
 # Rename best weights
-RenameWeights(best_weight_path)
-time.sleep(5)
+if multi_process:
+    RenameWeights(best_weight_path)
+    time.sleep(3)
 
 # %% make some demo images
 
