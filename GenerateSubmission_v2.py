@@ -42,13 +42,16 @@ def splitfile(file):
 test_datapath = '/data/Kaggle/test-norm-png-V2'
 class_weights_filepath = 'Best_Kaggle_Classification_Weights_1024train.h5'
 weight_filepath = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024train_v2.h5','Best_Kaggle_Weights_1024train_v3.h5']
-submission_filepath = 'Submission_v7.csv'
+# weight_filepath = 'Best_Kaggle_Weights_1024train_v4.h5'
+submission_filepath = 'Submission_v8.csv'
+
+use_ensemble = True
 
 # parameters
 batch_size = 4
 im_dims = (1024, 1024)
 n_channels = 1
-thresh = .75 # threshold for classification model
+thresh = .7 # threshold for classification model
 
 # Get list of files
 img_files = natsorted(glob(join(test_datapath, '*.png')))
@@ -123,16 +126,25 @@ pred_labels = (pred_labels[:,0]>thresh).astype(np.int)
 del class_model
 tqdm.write('Finished with classification model')
 
-# Get masks from segmentation model ensemble
-tqdm.write('Starting model ensemble...')
-all_masks = [GetBlockModelMasks(p,test_imgs,batch_size) for p in tqdm(weight_filepath)]
+if use_ensemble:
+    # Get masks from segmentation model ensemble
+    tqdm.write('Starting model ensemble...')
+    all_masks = [GetBlockModelMasks(p,test_imgs,batch_size) for p in tqdm(weight_filepath)]
 
-# ensemble masks together
-# just averaging right now
-# then apply sigmoid
-masks = sum(all_masks)/len(all_masks)
-masks = sigmoid(masks)
-del all_masks
+    # ensemble masks together
+    # just averaging right now
+    # then apply sigmoid
+    masks = sum(all_masks)/len(all_masks)
+    masks = sigmoid(masks)
+    del all_masks
+else:
+    tqdm.write('Loading segmentation model...')
+    model = BlockModel2D(input_shape=im_dims+(n_channels,),
+                        filt_num=16, numBlocks=4)
+    model.load_weights(weight_filepath)
+    tqdm.write('Getting predicted masks...')
+    masks = model.predict(test_imgs, batch_size=batch_size, verbose=0)
+
 
 # data to write to csv
 submission_data = []
@@ -140,7 +152,7 @@ submission_data = []
 tqdm.write('Processing masks...')
 with concurrent.futures.ProcessPoolExecutor() as executor:
     for sub_data in tqdm(executor.map(GetSubData,img_files,pred_labels,masks),total=len(img_files)):
-        # put results into correct output list
+        # put results into output list
         submission_data.append(sub_data)
 
 # write to csv
@@ -168,7 +180,7 @@ def SaveImMaskAsPng(img,mask,name,sdir='.'):
     msk_name = '{}_w_mask.png'.format(name)
     bkgd.save(join(sdir,msk_name))
 
-output_dir = 'SampleImagesAndMasks'
+output_dir = 'SampleImagesAndMasks_v4'
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
 tqdm.write('Saving sample images and masks...')
