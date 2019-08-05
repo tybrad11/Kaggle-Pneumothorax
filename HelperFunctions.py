@@ -9,6 +9,9 @@ from sklearn.utils import class_weight
 from keras.layers import Conv2D
 from keras.models import Model
 
+import time
+import GPUtil
+
 
 from Datagen import PngClassDataGenerator, PngDataGenerator
 
@@ -40,7 +43,7 @@ def get_train_params(batch_size, dims, n_channels, shuffle=True):
             'horizontal_flip': True,
             'vertical_flip': False,
             'rescale': None,
-            'preprocessing_function': None,
+            'preprocessing_function': 'CLAHE',
             'interpolation_order': 1}
 
 
@@ -61,7 +64,7 @@ def get_val_params(batch_size, dims, n_channels, shuffle=False):
             'horizontal_flip': False,
             'vertical_flip': False,
             'rescale': None,
-            'preprocessing_function': None,
+            'preprocessing_function': 'CLAHE',
             'interpolation_order': 1}
 
 
@@ -134,3 +137,19 @@ def ConvertModelOutputToLinear(model):
     newModel = Model(model.input,new_layer)
     newModel.layers[-1].set_weights(weights)
     return newModel
+
+
+def WaitForGPU(wait=300):
+    GPUavailable = False
+    while not GPUavailable:
+        try:
+            if not 'DEVICE_ID' in locals():
+                DEVICE_ID = GPUtil.getFirstAvailable()[0]
+                print('Using GPU', DEVICE_ID)
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
+            GPUavailable = True
+        except Exception as e:
+            # No GPU available
+            print('Waiting for GPU...')
+            GPUavailable = False
+        time.sleep(wait)
