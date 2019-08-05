@@ -13,6 +13,7 @@ from matplotlib import pyplot as plt
 from natsort import natsorted
 from PIL import Image
 from scipy.ndimage.measurements import label as scipy_label
+from skimage.exposure import equalize_adapthist
 from tqdm import tqdm
 
 from mask_functions_pneumothorax import mask2rle, rle2mask
@@ -46,6 +47,7 @@ weight_filepath = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024t
 submission_filepath = 'Submission_v8.csv'
 
 use_ensemble = True
+use_clahe = True
 
 # parameters
 batch_size = 4
@@ -61,6 +63,8 @@ def LoadImg(f, dims=(1024,1024)):
     img = Image.open(f)
     img = cv2.resize(np.array(img), dims).astype(np.float)
     img /= 255.
+    if use_clahe:
+        img = equalize_adapthist(img)
     return img
 
 def GetSubData(file,label,mask):
