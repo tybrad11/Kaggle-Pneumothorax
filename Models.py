@@ -28,6 +28,7 @@ def BlockModel2D(input_shape, filt_num=16, numBlocks=3):
     the rows/cols must be divisible by 2^numBlocks for skip connections
     to match up properly
     """
+    use_bn = True
 
     # check for input shape compatibility
     rows, cols = input_shape[0:2]
@@ -48,33 +49,40 @@ def BlockModel2D(input_shape, filt_num=16, numBlocks=3):
     for rr in range(1, numBlocks+1):
         x1 = Conv2D(filt_num*rr, (1, 1), padding='same',
                     name='Conv1_{}'.format(rr))(x)
-        x1 = BatchNormalization()(x1)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
         x1 = ELU(name='elu_x1_{}'.format(rr))(x1)
         x3 = Conv2D(filt_num*rr, (3, 3), padding='same',
                     name='Conv3_{}'.format(rr))(x)
-        x3 = BatchNormalization()(x3)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
         x3 = ELU(name='elu_x3_{}'.format(rr))(x3)
         x51 = Conv2D(filt_num*rr, (3, 3), padding='same',
                      name='Conv51_{}'.format(rr))(x)
-        x51 = BatchNormalization()(x51)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
         x51 = ELU(name='elu_x51_{}'.format(rr))(x51)
         x52 = Conv2D(filt_num*rr, (3, 3), padding='same',
                      name='Conv52_{}'.format(rr))(x51)
-        x52 = BatchNormalization()(x52)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
         x52 = ELU(name='elu_x52_{}'.format(rr))(x52)
         x = concatenate([x1, x3, x52], name='merge_{}'.format(rr))
         x = Conv2D(filt_num*rr, (1, 1), padding='valid',
                    name='ConvAll_{}'.format(rr))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_all_{}'.format(rr))(x)
         x = ZeroPadding2D(padding=(1, 1), name='PrePad_{}'.format(rr))(x)
         x = Conv2D(filt_num*rr, (4, 4), padding='valid',
                    strides=(2, 2), name='DownSample_{}'.format(rr))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_downsample_{}'.format(rr))(x)
         x = Conv2D(filt_num*rr, (3, 3), padding='same',
                    name='ConvClean_{}'.format(rr))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_clean_{}'.format(rr))(x)
         skip_list.append(x)
 
@@ -87,33 +95,40 @@ def BlockModel2D(input_shape, filt_num=16, numBlocks=3):
                             name='skip_connect_{}'.format(dd))
         x1 = Conv2D(filt_num*dd, (1, 1), padding='same',
                     name='DeConv1_{}'.format(dd))(x)
-        x1 = BatchNormalization()(x1)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
         x1 = ELU(name='elu_Dx1_{}'.format(dd))(x1)
         x3 = Conv2D(filt_num*dd, (3, 3), padding='same',
                     name='DeConv3_{}'.format(dd))(x)
-        x3 = BatchNormalization()(x3)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
         x3 = ELU(name='elu_Dx3_{}'.format(dd))(x3)
         x51 = Conv2D(filt_num*dd, (3, 3), padding='same',
                      name='DeConv51_{}'.format(dd))(x)
-        x51 = BatchNormalization()(x51)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
         x51 = ELU(name='elu_Dx51_{}'.format(dd))(x51)
         x52 = Conv2D(filt_num*dd, (3, 3), padding='same',
                      name='DeConv52_{}'.format(dd))(x51)
-        x52 = BatchNormalization()(x52)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
         x52 = ELU(name='elu_Dx52_{}'.format(dd))(x52)
         x = concatenate([x1, x3, x52], name='Dmerge_{}'.format(dd))
         x = Conv2D(filt_num*dd, (1, 1), padding='valid',
                    name='DeConvAll_{}'.format(dd))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_Dall_{}'.format(dd))(x)
         x = UpSampling2D(size=(2, 2), name='UpSample_{}'.format(dd))(x)
         x = Conv2D(filt_num*dd, (3, 3), padding='same',
                    name='DeConvClean1_{}'.format(dd))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_Dclean1_{}'.format(dd))(x)
         x = Conv2D(filt_num*dd, (3, 3), padding='same',
                    name='DeConvClean2_{}'.format(dd))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_Dclean2_{}'.format(dd))(x)
 
     # classifier
@@ -143,6 +158,8 @@ def BlockModel_Classifier(input_shape, filt_num=16, numBlocks=3):
     to match up properly
     """
 
+    use_bn = True
+
     # check for input shape compatibility
     rows, cols = input_shape[0:2]
     assert rows % 2**numBlocks == 0, "Input rows and number of blocks are incompatible"
@@ -162,33 +179,40 @@ def BlockModel_Classifier(input_shape, filt_num=16, numBlocks=3):
     for rr in range(1, numBlocks+1):
         x1 = Conv2D(filt_num*rr, (1, 1), padding='same',
                     name='Conv1_{}'.format(rr))(x)
-        x1 = BatchNormalization()(x1)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
         x1 = ELU(name='elu_x1_{}'.format(rr))(x1)
         x3 = Conv2D(filt_num*rr, (3, 3), padding='same',
                     name='Conv3_{}'.format(rr))(x)
-        x3 = BatchNormalization()(x3)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
         x3 = ELU(name='elu_x3_{}'.format(rr))(x3)
         x51 = Conv2D(filt_num*rr, (3, 3), padding='same',
                      name='Conv51_{}'.format(rr))(x)
-        x51 = BatchNormalization()(x51)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
         x51 = ELU(name='elu_x51_{}'.format(rr))(x51)
         x52 = Conv2D(filt_num*rr, (3, 3), padding='same',
                      name='Conv52_{}'.format(rr))(x51)
-        x52 = BatchNormalization()(x52)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
         x52 = ELU(name='elu_x52_{}'.format(rr))(x52)
         x = concatenate([x1, x3, x52], name='merge_{}'.format(rr))
         x = Conv2D(filt_num*rr, (1, 1), padding='valid',
                    name='ConvAll_{}'.format(rr))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_all_{}'.format(rr))(x)
         x = ZeroPadding2D(padding=(1, 1), name='PrePad_{}'.format(rr))(x)
         x = Conv2D(filt_num*rr, (4, 4), padding='valid',
                    strides=(2, 2), name='DownSample_{}'.format(rr))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_downsample_{}'.format(rr))(x)
         x = Conv2D(filt_num*rr, (3, 3), padding='same',
                    name='ConvClean_{}'.format(rr))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_skip_{}'.format(rr))(x)
 
     # average pooling
@@ -213,6 +237,8 @@ def ConvertEncoderToCED(model):
     # freeze encoder layers
     for layer in model.layers:
         layer.trainable = False
+    
+    use_bn = True
 
     # make expanding blocks
     expnums = list(range(1, numBlocks+1))
@@ -223,33 +249,40 @@ def ConvertEncoderToCED(model):
                             name='skip_connect_{}'.format(dd))
         x1 = Conv2D(filt_num*dd, (1, 1), padding='same',
                     name='DeConv1_{}'.format(dd))(x)
-        x1 = BatchNormalization()(x1)
+        if use_bn:
+            x1 = BatchNormalization()(x1)
         x1 = ELU(name='elu_Dx1_{}'.format(dd))(x1)
         x3 = Conv2D(filt_num*dd, (3, 3), padding='same',
                     name='DeConv3_{}'.format(dd))(x)
-        x3 = BatchNormalization()(x3)
+        if use_bn:
+            x3 = BatchNormalization()(x3)
         x3 = ELU(name='elu_Dx3_{}'.format(dd))(x3)
         x51 = Conv2D(filt_num*dd, (3, 3), padding='same',
                      name='DeConv51_{}'.format(dd))(x)
-        x51 = BatchNormalization()(x51)
+        if use_bn:
+            x51 = BatchNormalization()(x51)
         x51 = ELU(name='elu_Dx51_{}'.format(dd))(x51)
         x52 = Conv2D(filt_num*dd, (3, 3), padding='same',
                      name='DeConv52_{}'.format(dd))(x51)
-        x52 = BatchNormalization()(x52)
+        if use_bn:
+            x52 = BatchNormalization()(x52)
         x52 = ELU(name='elu_Dx52_{}'.format(dd))(x52)
         x = concatenate([x1, x3, x52], name='Dmerge_{}'.format(dd))
         x = Conv2D(filt_num*dd, (1, 1), padding='valid',
                    name='DeConvAll_{}'.format(dd))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_Dall_{}'.format(dd))(x)
         x = UpSampling2D(size=(2, 2), name='UpSample_{}'.format(dd))(x)
         x = Conv2D(filt_num*dd, (3, 3), padding='same',
                    name='DeConvClean1_{}'.format(dd))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_Dclean1_{}'.format(dd))(x)
         x = Conv2D(filt_num*dd, (3, 3), padding='same',
                    name='DeConvClean2_{}'.format(dd))(x)
-        x = BatchNormalization()(x)
+        if use_bn:
+            x = BatchNormalization()(x)
         x = ELU(name='elu_Dclean2_{}'.format(dd))(x)
 
     # classifier
