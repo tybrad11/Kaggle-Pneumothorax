@@ -15,7 +15,7 @@ from sklearn.utils import class_weight
 
 from Datagen import PngClassDataGenerator, PngDataGenerator
 from HelperFunctions import (RenameWeights, get_class_datagen, get_seg_datagen,
-                             get_train_params, get_val_params)
+                             get_train_params, get_val_params, WaitForGPU)
 from Losses import dice_coef_loss
 from Models import BlockModel2D, BlockModel_Classifier, ConvertEncoderToCED
 
@@ -24,13 +24,8 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'false'
 
 rng = np.random.RandomState(seed=1)
 
-try:
-    if not 'DEVICE_ID' in locals():
-        DEVICE_ID = GPUtil.getFirstAvailable()[0]
-        print('Using GPU', DEVICE_ID)
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
-except Exception as e:
-    raise('No GPU available')
+if False:
+    WaitForGPU()
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~
@@ -60,6 +55,7 @@ pre_batch_size = 16
 pre_val_split = .15
 pre_epochs = 10
 pre_multi_process = False
+skip_pretrain = False
 
 # train parameters
 im_dims = (512, 512)
@@ -67,7 +63,7 @@ n_channels = 1
 batch_size = 4
 learnRate = 1e-4
 val_split = .15
-epochs = [10, 50]  # epochs before and after unfreezing weights
+epochs = [10, 30]  # epochs before and after unfreezing weights
 full_epochs = 100 # epochs trained on 1024 data
 multi_process = False
 
@@ -88,35 +84,41 @@ full_val_params = get_val_params(2, (1024, 1024), 1)
 # ~~~~Pre-training~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~~
 
-print('---------------------------------')
-print('---- Setting up pre-training ----')
-print('---------------------------------')
+if not skip_pretrain:
+    print('---------------------------------')
+    print('---- Setting up pre-training ----')
+    print('---------------------------------')
 
-# Get datagens for pre-training
-pre_train_gen, pre_val_gen, class_weights = get_class_datagen(
-    pre_train_datapath, pre_train_negative_datapath, pre_train_params, pre_val_params, pre_val_split)
+    # Get datagens for pre-training
+    pre_train_gen, pre_val_gen, class_weights = get_class_datagen(
+        pre_train_datapath, pre_train_negative_datapath, pre_train_params, pre_val_params, pre_val_split)
 
-# Create model
-pre_model = BlockModel_Classifier(input_shape=pre_im_dims+(pre_n_channels,),
-                                  filt_num=filt_nums, numBlocks=num_blocks)
+    # Create model
+    pre_model = BlockModel_Classifier(input_shape=pre_im_dims+(pre_n_channels,),
+                                    filt_num=filt_nums, numBlocks=num_blocks)
 
-# Compile model
-pre_model.compile(Adam(), loss='binary_crossentropy', metrics=['accuracy'])
+    # Compile model
+    pre_model.compile(Adam(), loss='binary_crossentropy', metrics=['accuracy'])
 
-# Create callbacks
-cb_check = ModelCheckpoint(pretrain_weights_filepath, monitor='val_loss',
-                           verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
+    # Create callbacks
+    cb_check = ModelCheckpoint(pretrain_weights_filepath, monitor='val_loss',
+                            verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
 
-print('---------------------------------')
-print('----- Starting pre-training -----')
-print('---------------------------------')
+    print('---------------------------------')
+    print('----- Starting pre-training -----')
+    print('---------------------------------')
 
-# Train model
-pre_history = pre_model.fit_generator(generator=pre_train_gen,
-                                      epochs=pre_epochs, use_multiprocessing=pre_multi_process,
-                                      workers=8, verbose=1, callbacks=[cb_check],
-                                      class_weight=class_weights,
-                                      validation_data=pre_val_gen)
+    # Train model
+    pre_history = pre_model.fit_generator(generator=pre_train_gen,
+                                        epochs=pre_epochs, use_multiprocessing=pre_multi_process,
+                                        workers=8, verbose=1, callbacks=[cb_check],
+                                        class_weight=class_weights,
+                                        validation_data=pre_val_gen)
+else:
+    # Just create model, then load weights
+    pre_model = BlockModel_Classifier(input_shape=pre_im_dims+(pre_n_channels,),
+                                    filt_num=filt_nums, numBlocks=num_blocks)
+
 
 # Load best weights
 pre_model.load_weights(pretrain_weights_filepath)
