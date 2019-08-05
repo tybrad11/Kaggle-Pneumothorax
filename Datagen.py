@@ -102,14 +102,16 @@ class PngDataGenerator(keras.utils.Sequence):
                 im = im[..., 0]
             if im.shape[:2] != self.dim:
                 im = cv2.resize(im, self.dim)
-            im = im[..., np.newaxis].astype(np.float)
+            im = im.astype(np.float)
+
+            # normalize to [0,1]
+            im /= 255.
 
             # apply CLAHE, if selected
             if self.preprocessing_function == 'CLAHE':
                 im = equalize_adapthist(im)
 
-            # normalize to [0,1]
-            im /= 255.
+            im = np.exand_dims(im,-1)
 
             # load mask
             mask = np.array(Image.open(self.labels[f]))
@@ -480,16 +482,18 @@ class PngClassDataGenerator(PngDataGenerator):
             if im.shape[:2] != self.dim:
                 im = cv2.resize(im, self.dim)
             
-            im = im[..., np.newaxis].astype(np.float)
+            im = im.astype(np.float)
             if self.n_channels > 1:
                 im = np.repeat(im,self.n_channels,axis=-1)
             
+            # normalize to [0,1]
+            im /= 255.
+
             # apply CLAHE, if selected
             if self.preprocessing_function == 'CLAHE':
                 im = equalize_adapthist(im)
 
-            # normalize to [0,1]
-            im /= 255.
+            im = np.expand_dims(im,-1)
             
             # apply random transformation
             x = self.random_transform(im)
