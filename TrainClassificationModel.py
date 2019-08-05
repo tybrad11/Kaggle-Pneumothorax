@@ -101,11 +101,11 @@ if not skip_pretrain:
 
     # Compile model
     model.compile(Adam(lr=learnRate), loss='binary_crossentropy',
-                metrics=['accuracy'])
+                  metrics=['accuracy'])
 
     # Create callbacks
     cb_check = ModelCheckpoint(pretrain_weights_filepath, monitor='val_loss',
-                            verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
+                               verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
 
     print('---------------------------------')
     print('----- Starting pre-training -----')
@@ -113,10 +113,10 @@ if not skip_pretrain:
 
     # Train model
     pre_history = model.fit_generator(generator=pre_train_gen,
-                                    epochs=pre_epochs, use_multiprocessing=pre_multi_process,
-                                    workers=8, verbose=1, callbacks=[cb_check],
-                                    class_weight=class_weights,
-                                    validation_data=pre_val_gen)
+                                      epochs=pre_epochs, use_multiprocessing=pre_multi_process,
+                                      workers=8, verbose=1, callbacks=[cb_check],
+                                      class_weight=class_weights,
+                                      validation_data=pre_val_gen)
 
     # Load best weights
     model.load_weights(pretrain_weights_filepath)
@@ -152,7 +152,7 @@ else:
     model = Inception_model(input_shape=pre_im_dims+(pre_n_channels,))
     # Compile model
     model.compile(Adam(lr=learnRate), loss='binary_crossentropy',
-                metrics=['accuracy'])
+                  metrics=['accuracy'])
     model.load_weights(pretrain_weights_filepath)
 
 # %% ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -219,12 +219,12 @@ print('---- Setting up 1024 training ----')
 print('----------------------------------')
 
 # rebuild model
-full_model = Inception_model(input_shape=(1024,1024)+(n_channels,))
+full_model = Inception_model(input_shape=(1024, 1024)+(n_channels,))
 full_model.load_weights(cur_weights_path)
 
 # Compile model
 full_model.compile(Adam(lr=learnRate), loss='binary_crossentropy',
-              metrics=['accuracy'])
+                   metrics=['accuracy'])
 
 # Get datagens for training
 full_train_gen, full_val_gen, class_weights = get_class_datagen(
@@ -241,10 +241,10 @@ print('----------------------------------')
 
 # Train model
 history = full_model.fit_generator(generator=full_train_gen,
-                              epochs=full_epochs, use_multiprocessing=multi_process,
-                              workers=8, verbose=1, callbacks=[cb_check],
-                              class_weight=class_weights,
-                              validation_data=full_val_gen)
+                                   epochs=full_epochs, use_multiprocessing=multi_process,
+                                   workers=8, verbose=1, callbacks=[cb_check],
+                                   class_weight=class_weights,
+                                   validation_data=full_val_gen)
 
 # Load best weights
 full_model.load_weights(cur_weights_path)
@@ -290,10 +290,17 @@ plt.title('Receiver operating characteristic for pneumothorax')
 plt.legend(loc="lower right")
 plt.show()
 
+# print threshold table
+from prettytable import PrettyTable
+table = PrettyTable(['Threshold', 'True Positive Rate', 'False Positive Rate'])
+for t,tp,fp in zip(thresholds,tpr,fpr):
+    table.add(['{:.034f}'.format(t),'{:.034f}'.format(tp),'{:.034f}'.format(fp)])
+print(table)
+
 
 # Get and display a few predictions
 for ind in range(5):
-    b_ind = np.random.randint(0,len(full_val_gen))
+    b_ind = np.random.randint(0, len(full_val_gen))
     valX, valY = full_val_gen.__getitem__(b_ind)
     preds = full_model.predict_on_batch(valX)
     cur_im = valX[0]
