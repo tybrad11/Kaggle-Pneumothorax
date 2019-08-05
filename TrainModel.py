@@ -24,7 +24,7 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'false'
 
 rng = np.random.RandomState(seed=1)
 
-if False:
+if True:
     WaitForGPU()
 
 
@@ -63,8 +63,8 @@ n_channels = 1
 batch_size = 4
 learnRate = 1e-4
 val_split = .15
-epochs = [10, 30]  # epochs before and after unfreezing weights
-full_epochs = 100 # epochs trained on 1024 data
+epochs = [10, 20]  # epochs before and after unfreezing weights
+full_epochs = 50 # epochs trained on 1024 data
 multi_process = False
 
 # model parameters
