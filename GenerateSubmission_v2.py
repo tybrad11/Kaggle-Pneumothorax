@@ -39,14 +39,23 @@ def splitfile(file):
     _, file = os.path.split(file)
     return os.path.splitext(file)[0]
 
+# Testing images
+test_datapath = '/data/Kaggle/test-png'
+# Path to classification model weights to use
+class_weights_filepath = 'Best_Kaggle_Classification_Weights_1024train_v4.h5'
 
-test_datapath = '/data/Kaggle/test-norm-png-V2'
-class_weights_filepath = 'Best_Kaggle_Classification_Weights_1024train.h5'
-weight_filepath = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024train_v2.h5','Best_Kaggle_Weights_1024train_v3.h5']
-# weight_filepath = 'Best_Kaggle_Weights_1024train_v4.h5'
-submission_filepath = 'Submission_v8.csv'
+# Path(s) to segmentation model weights to use
+# Provide list for ensemble evaluation, string for single model
+# weight_filepath = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024train_v2.h5','Best_Kaggle_Weights_1024train_v3.h5']
+weight_filepath = 'Best_Kaggle_Weights_1024train_v4.h5'
 
-use_ensemble = True
+# Where to save submission output
+submission_filepath = 'Submission_v9.csv'
+
+# Whether to use ensemble
+# automatically inferred from weight_filepath
+use_ensemble = isinstance(weight_filepath,list)
+# Whether to use CLAHE normalization in image pre-processing
 use_clahe = True
 
 # parameters
@@ -55,10 +64,10 @@ im_dims = (1024, 1024)
 n_channels = 1
 thresh = .7 # threshold for classification model
 
-# Get list of files
+# Get list of testing files
 img_files = natsorted(glob(join(test_datapath, '*.png')))
 
-
+# Function for loading in testing images
 def LoadImg(f, dims=(1024,1024)):
     img = Image.open(f)
     img = cv2.resize(np.array(img), dims).astype(np.float)
@@ -67,6 +76,7 @@ def LoadImg(f, dims=(1024,1024)):
         img = equalize_adapthist(img)
     return img
 
+# Function for generating submission data for a sample
 def GetSubData(file,label,mask):
     mask = mask[...,0]
     mask = (mask > .5).astype(np.int)
@@ -85,6 +95,8 @@ def GetSubData(file,label,mask):
         rle = -1
     return [fid, rle]
 
+# Function for getting linear output masks
+# from segmentation model for ensemble purposes
 def GetBlockModelMasks(weights_path,test_imgs,batch_size):
     # Create model
     tqdm.write('Loading segmentation model...')
@@ -93,7 +105,7 @@ def GetBlockModelMasks(weights_path,test_imgs,batch_size):
     # Load weights
     model.load_weights(weights_path)
 
-    # convert to linear output layer
+    # convert to linear output layer- for better ensembling
     model = ConvertModelOutputToLinear(model)
 
     # Get predicted masks
@@ -102,21 +114,24 @@ def GetBlockModelMasks(weights_path,test_imgs,batch_size):
     del model
     return masks
 
+# sigmoid function to apply after ensembling
 def sigmoid(x):
     return 1 / (1 + math.e ** -x)
 
 
-# load files into array
+# load testing image files into array
 tqdm.write('Loading images...')
 img_list = list()
+# using multi processing for efficiency
 with concurrent.futures.ProcessPoolExecutor() as executor:
     for img_array in tqdm(executor.map(LoadImg, img_files),total=len(img_files)):
         # put results into correct output list
         img_list.append(img_array)
+# convert into 4D stack for model evaluation
 test_imgs = np.stack(img_list)[...,np.newaxis]
 
 
-# Load classification model
+# Load classification model, for stratifying
 tqdm.write('Loading classification model...')
 class_model = Inception_model(input_shape=(1024,1024)+(n_channels,))
 class_model.load_weights(class_weights_filepath)
@@ -126,7 +141,7 @@ tqdm.write('Making classification predictions...')
 pred_labels = class_model.predict(test_imgs,batch_size=4,verbose=1)
 pred_labels = (pred_labels[:,0]>thresh).astype(np.int)
 
-# remove model
+# remove model, to save memory
 del class_model
 tqdm.write('Finished with classification model')
 
@@ -184,7 +199,7 @@ def SaveImMaskAsPng(img,mask,name,sdir='.'):
     msk_name = '{}_w_mask.png'.format(name)
     bkgd.save(join(sdir,msk_name))
 
-output_dir = 'SampleImagesAndMasks_v4'
+output_dir = 'SampleImagesAndMasks_v5'
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
 tqdm.write('Saving sample images and masks...')
@@ -201,7 +216,3 @@ print('Done')
 finish_time = time()
 from datetime import timedelta
 print('Time elapsed: {}'.format(timedelta(seconds=finish_time-start_time)))
-
-
-# display some images
-# mask_viewer0(test_imgs[:100,...,0],.5*masks[:100,...,0],labels=pred_labels[:100])
