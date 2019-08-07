@@ -111,7 +111,7 @@ class PngDataGenerator(keras.utils.Sequence):
             if self.preprocessing_function == 'CLAHE':
                 im = equalize_adapthist(im)
 
-            im = np.exand_dims(im,-1)
+            im = np.expand_dims(im,-1)
 
             # load mask
             mask = np.array(Image.open(self.labels[f]))
