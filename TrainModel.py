@@ -24,7 +24,7 @@ os.environ['HDF5_USE_FILE_LOCKING'] = 'false'
 
 rng = np.random.RandomState(seed=1)
 
-if True:
+if False:
     WaitForGPU()
 
 
@@ -53,9 +53,9 @@ pre_im_dims = (512, 512)
 pre_n_channels = 1
 pre_batch_size = 16
 pre_val_split = .15
-pre_epochs = 10
+pre_epochs = 5
 pre_multi_process = False
-skip_pretrain = False
+skip_pretrain = True
 
 # train parameters
 im_dims = (512, 512)
@@ -63,7 +63,7 @@ n_channels = 1
 batch_size = 4
 learnRate = 1e-4
 val_split = .15
-epochs = [10, 20]  # epochs before and after unfreezing weights
+epochs = [5, 20]  # epochs before and after unfreezing weights
 full_epochs = 50 # epochs trained on 1024 data
 multi_process = False
 
@@ -114,36 +114,38 @@ if not skip_pretrain:
                                         workers=8, verbose=1, callbacks=[cb_check],
                                         class_weight=class_weights,
                                         validation_data=pre_val_gen)
+
+    # Load best weights
+    pre_model.load_weights(pretrain_weights_filepath)
+
+    # Calculate confusion matrix
+    print('Calculating classification confusion matrix...')
+    pre_val_gen.shuffle = False
+    preds = pre_model.predict_generator(pre_val_gen, verbose=1)
+    labels = [pre_val_gen.labels[f] for f in pre_val_gen.list_IDs]
+    y_pred = np.rint(preds)
+    totalNum = len(y_pred)
+    y_true = np.rint(labels)[:totalNum]
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+
+    print('----------------------')
+    print('Classification Results')
+    print('----------------------')
+    print('True positives: {}'.format(tp))
+    print('True negatives: {}'.format(tn))
+    print('False positives: {}'.format(fp))
+    print('False negatives: {}'.format(fn))
+    print('% Positive: {:.02f}'.format(100*(tp+fp)/totalNum))
+    print('% Negative: {:.02f}'.format(100*(tn+fn)/totalNum))
+    print('% Accuracy: {:.02f}'.format(100*(tp+tn)/totalNum))
+    print('-----------------------')
+
 else:
     # Just create model, then load weights
     pre_model = BlockModel_Classifier(input_shape=pre_im_dims+(pre_n_channels,),
                                     filt_num=filt_nums, numBlocks=num_blocks)
-
-
-# Load best weights
-pre_model.load_weights(pretrain_weights_filepath)
-
-# Calculate confusion matrix
-print('Calculating classification confusion matrix...')
-pre_val_gen.shuffle = False
-preds = pre_model.predict_generator(pre_val_gen, verbose=1)
-labels = [pre_val_gen.labels[f] for f in pre_val_gen.list_IDs]
-y_pred = np.rint(preds)
-totalNum = len(y_pred)
-y_true = np.rint(labels)[:totalNum]
-tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-
-print('----------------------')
-print('Classification Results')
-print('----------------------')
-print('True positives: {}'.format(tp))
-print('True negatives: {}'.format(tn))
-print('False positives: {}'.format(fp))
-print('False negatives: {}'.format(fn))
-print('% Positive: {:.02f}'.format(100*(tp+fp)/totalNum))
-print('% Negative: {:.02f}'.format(100*(tn+fn)/totalNum))
-print('% Accuracy: {:.02f}'.format(100*(tp+tn)/totalNum))
-print('-----------------------')
+    # Load best weights
+    pre_model.load_weights(pretrain_weights_filepath)
 
 # %% ~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~~~ Training ~~~~~~~
