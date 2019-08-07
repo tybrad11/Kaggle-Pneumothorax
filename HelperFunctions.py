@@ -148,8 +148,9 @@ def WaitForGPU(wait=300):
                 print('Using GPU', DEVICE_ID)
             os.environ["CUDA_VISIBLE_DEVICES"] = str(DEVICE_ID)
             GPUavailable = True
+            return
         except Exception as e:
             # No GPU available
             print('Waiting for GPU...')
             GPUavailable = False
-        time.sleep(wait)
+            time.sleep(wait)
