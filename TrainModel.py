@@ -1,4 +1,5 @@
 # %% Setup
+from VisTools import DisplayDifferenceMask
 import time
 import os
 from glob import glob
@@ -16,6 +17,7 @@ from sklearn.utils import class_weight
 from Datagen import PngClassDataGenerator, PngDataGenerator
 from HelperFunctions import (RenameWeights, get_class_datagen, get_seg_datagen,
                              get_train_params, get_val_params, WaitForGPU)
+from CustomCallbacks import CyclicLR
 from Losses import dice_coef_loss
 from Models import BlockModel2D, BlockModel_Classifier, ConvertEncoderToCED
 
@@ -44,8 +46,11 @@ pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_s
 pos_img_path = '/data/Kaggle/pos-filt-png'
 pos_mask_path = '/data/Kaggle/pos-filt-mask-png'
 
+# use non-normalized images with (almost) all masks
+pos_img_path = '/data/Kaggle/pos-all-png'
+pos_mask_path = '/data/Kaggle/pos-all-mask-png'
+
 pretrain_weights_filepath = 'Pretrain_class_weights.h5'
-weight_filepath = 'Kaggle_Weights_{}_{{epoch:02d}}-{{val_loss:.4f}}.h5'
 best_weight_filepath = 'Best_Kaggle_Weights_{}_v4.h5'
 
 # pre-train parameters
@@ -54,7 +59,6 @@ pre_n_channels = 1
 pre_batch_size = 16
 pre_val_split = .15
 pre_epochs = 5
-pre_multi_process = False
 skip_pretrain = True
 
 # train parameters
@@ -63,9 +67,8 @@ n_channels = 1
 batch_size = 4
 learnRate = 1e-4
 val_split = .15
-epochs = [5, 20]  # epochs before and after unfreezing weights
-full_epochs = 50 # epochs trained on 1024 data
-multi_process = False
+epochs = [5, 10]  # epochs before and after unfreezing weights
+full_epochs = 60  # epochs trained on 1024 data
 
 # model parameters
 filt_nums = 16
@@ -95,14 +98,14 @@ if not skip_pretrain:
 
     # Create model
     pre_model = BlockModel_Classifier(input_shape=pre_im_dims+(pre_n_channels,),
-                                    filt_num=filt_nums, numBlocks=num_blocks)
+                                      filt_num=filt_nums, numBlocks=num_blocks)
 
     # Compile model
     pre_model.compile(Adam(), loss='binary_crossentropy', metrics=['accuracy'])
 
     # Create callbacks
     cb_check = ModelCheckpoint(pretrain_weights_filepath, monitor='val_loss',
-                            verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
+                               verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
 
     print('---------------------------------')
     print('----- Starting pre-training -----')
@@ -110,10 +113,10 @@ if not skip_pretrain:
 
     # Train model
     pre_history = pre_model.fit_generator(generator=pre_train_gen,
-                                        epochs=pre_epochs, use_multiprocessing=pre_multi_process,
-                                        workers=8, verbose=1, callbacks=[cb_check],
-                                        class_weight=class_weights,
-                                        validation_data=pre_val_gen)
+                                          epochs=pre_epochs, verbose=1,
+                                          callbacks=[cb_check],
+                                          class_weight=class_weights,
+                                          validation_data=pre_val_gen)
 
     # Load best weights
     pre_model.load_weights(pretrain_weights_filepath)
@@ -143,7 +146,7 @@ if not skip_pretrain:
 else:
     # Just create model, then load weights
     pre_model = BlockModel_Classifier(input_shape=pre_im_dims+(pre_n_channels,),
-                                    filt_num=filt_nums, numBlocks=num_blocks)
+                                      filt_num=filt_nums, numBlocks=num_blocks)
     # Load best weights
     pre_model.load_weights(pretrain_weights_filepath)
 
@@ -163,16 +166,10 @@ train_gen, val_gen = get_seg_datagen(
 
 
 # Create callbacks
-cur_weight_path = weight_filepath.format('512train')
 best_weight_path = best_weight_filepath.format('512train')
-if multi_process:
-    cb_check = ModelCheckpoint(cur_weight_path, monitor='val_loss',
-                               verbose=1, save_best_only=True,
-                               save_weights_only=True, mode='auto', period=1)
-else:
-    cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
-                               verbose=1, save_best_only=True,
-                               save_weights_only=True, mode='auto', period=1)
+cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
+                            verbose=1, save_best_only=True,
+                            save_weights_only=True, mode='auto', period=1)
 
 cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=3, verbose=1)
@@ -185,8 +182,8 @@ print('----- Starting 512-training -----')
 print('---------------------------------')
 
 history = model.fit_generator(generator=train_gen,
-                              epochs=epochs[0], use_multiprocessing=multi_process,
-                              workers=8, verbose=1, callbacks=[cb_plateau],
+                              epochs=epochs[0], verbose=1,
+                              callbacks=[cb_plateau],
                               validation_data=val_gen)
 
 # make all layers trainable again
@@ -201,12 +198,10 @@ print('--Training with unfrozen weights--')
 print('----------------------------------')
 
 history2 = model.fit_generator(generator=train_gen,
-                               epochs=epochs[1], use_multiprocessing=multi_process,
-                               workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
+                               epochs=epochs[1],
+                               verbose=1,
+                               callbacks=[cb_check, cb_plateau],
                                validation_data=val_gen)
-if multi_process:
-    # rename best weights
-    RenameWeights(best_weight_path)
 
 # %% ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~~~ Full Size Training ~~~~~~~
@@ -225,21 +220,22 @@ full_model.compile(Adam(lr=learnRate), loss=dice_coef_loss)
 # Set weight paths
 cur_weight_path = weight_filepath.format('1024train')
 best_weight_path = best_weight_filepath.format('1024train')
-# Create callbacks
-if multi_process:
-    cb_check = ModelCheckpoint(cur_weight_path, monitor='val_loss',
-                               verbose=1, save_best_only=True,
-                               save_weights_only=True, mode='auto', period=1)
-else:
-    cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
-                               verbose=1, save_best_only=True,
-                               save_weights_only=True, mode='auto', period=1)
-cb_plateau = ReduceLROnPlateau(
-    monitor='val_loss', factor=.5, patience=3, verbose=1)
 
 # Setup full size datagens
 train_gen, val_gen = get_seg_datagen(
     pos_img_path, pos_mask_path, full_train_params, full_val_params, val_split)
+
+# Create callbacks
+cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
+                           verbose=1, save_best_only=True,
+                           save_weights_only=True, mode='auto', period=1)
+
+# cb_plateau = ReduceLROnPlateau(
+#     monitor='val_loss', factor=.5, patience=3, verbose=1)
+# cyclical learning rate
+clr_step = 4*len(train_gen)
+cb_clr = CyclicLR(base_lr=learnRate/100, max_lr=learnRate*10,
+                  step_size=clr_step, mode='triangular2')
 
 print('---------------------------------')
 print('---- Starting 1024-training -----')
@@ -247,28 +243,23 @@ print('---------------------------------')
 
 # train full size model
 history_full = full_model.fit_generator(generator=train_gen,
-                                        epochs=full_epochs, use_multiprocessing=multi_process,
-                                        workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
+                                        epochs=full_epochs, verbose=1,
+                                        callbacks=[cb_check, cb_plateau],
                                         validation_data=val_gen)
 
-
-# Rename best weights
-if multi_process:
-    RenameWeights(best_weight_path)
-    time.sleep(3)
 
 # %% make some demo images
 
 full_model.load_weights(best_weight_path)
-from VisTools import DisplayDifferenceMask
-import numpy as np
 
-for rep in range(2):
+count = 0
+for rep in range(20):
     testX, testY = val_gen.__getitem__(rep)
     preds = full_model.predict_on_batch(testX)
 
     for im, mask, pred in zip(testX, testY, preds):
-        DisplayDifferenceMask(im[..., 0], mask[..., 0], pred[..., 0])
+        DisplayDifferenceMask(im[..., 0], mask[..., 0], pred[..., 0],savepath='SampleDifferenceMasks_{}.png'.format(count))
+        count += 1
 
 
-#%%
+# %%
