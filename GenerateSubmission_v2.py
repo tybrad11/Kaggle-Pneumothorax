@@ -199,7 +199,7 @@ def SaveImMaskAsPng(img,mask,name,sdir='.'):
     msk_name = '{}_w_mask.png'.format(name)
     bkgd.save(join(sdir,msk_name))
 
-output_dir = 'SampleImagesAndMasks_v5'
+output_dir = 'SampleImagesAndMasks_v4'
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
 tqdm.write('Saving sample images and masks...')
