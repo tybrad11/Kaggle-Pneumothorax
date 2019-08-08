@@ -41,20 +41,28 @@ def splitfile(file):
 
 # Testing images
 test_datapath = '/data/Kaggle/test-png'
+
+# Best weights directory
+weight_dir = './SavedWeights'
+
 # Path to classification model weights to use
-class_weights_filepath = 'Best_Kaggle_Classification_Weights_1024train_v4.h5'
+class_weights_fname = 'Classification_Inception_1024.h5'
+class_weights_filepath = join(weight_dir,class_weights_fname)
+
 
 # Path(s) to segmentation model weights to use
 # Provide list for ensemble evaluation, string for single model
-# weight_filepath = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024train_v2.h5','Best_Kaggle_Weights_1024train_v3.h5']
-weight_filepath = 'Best_Kaggle_Weights_1024train_v4.h5'
+# seg_weight_name = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024train_v2.h5','Best_Kaggle_Weights_1024train_v3.h5']
+# seg_weight_filepath = [join(weight_dir,name) for name in seg_weight_fname]
+seg_weight_fname = 'Best_Kaggle_Weights_1024train_v4.h5'
+seg_weight_filepath = join(weight_dir,seg_weight_fname)
 
 # Where to save submission output
 submission_filepath = 'Submission_v9.csv'
 
 # Whether to use ensemble
-# automatically inferred from weight_filepath
-use_ensemble = isinstance(weight_filepath,list)
+# automatically inferred from weight_filepath being a list
+use_ensemble = isinstance(seg_weight_filepath,list)
 # Whether to use CLAHE normalization in image pre-processing
 use_clahe = True
 
@@ -62,7 +70,7 @@ use_clahe = True
 batch_size = 4
 im_dims = (1024, 1024)
 n_channels = 1
-thresh = .7 # threshold for classification model
+thresh = .8 # threshold for classification model
 
 # Get list of testing files
 img_files = natsorted(glob(join(test_datapath, '*.png')))
@@ -148,7 +156,7 @@ tqdm.write('Finished with classification model')
 if use_ensemble:
     # Get masks from segmentation model ensemble
     tqdm.write('Starting model ensemble...')
-    all_masks = [GetBlockModelMasks(p,test_imgs,batch_size) for p in tqdm(weight_filepath)]
+    all_masks = [GetBlockModelMasks(p,test_imgs,batch_size) for p in tqdm(seg_weight_filepath)]
 
     # ensemble masks together
     # just averaging right now
@@ -160,9 +168,9 @@ else:
     tqdm.write('Loading segmentation model...')
     model = BlockModel2D(input_shape=im_dims+(n_channels,),
                         filt_num=16, numBlocks=4)
-    model.load_weights(weight_filepath)
+    model.load_weights(seg_weight_filepath)
     tqdm.write('Getting predicted masks...')
-    masks = model.predict(test_imgs, batch_size=batch_size, verbose=0)
+    masks = model.predict(test_imgs, batch_size=batch_size, verbose=1)
 
 
 # data to write to csv
