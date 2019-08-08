@@ -43,8 +43,8 @@ pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_s
 # pos_mask_path = '/data/Kaggle/pos-mask-png'
 
 # use non-normalized images with large masks
-pos_img_path = '/data/Kaggle/pos-filt-png'
-pos_mask_path = '/data/Kaggle/pos-filt-mask-png'
+pos_img_filt_path = '/data/Kaggle/pos-filt-png'
+pos_mask_filt_path = '/data/Kaggle/pos-filt-mask-png'
 
 # use non-normalized images with (almost) all masks
 pos_img_path = '/data/Kaggle/pos-all-png'
@@ -68,7 +68,8 @@ batch_size = 4
 learnRate = 1e-4
 val_split = .15
 epochs = [5, 10]  # epochs before and after unfreezing weights
-full_epochs = 60  # epochs trained on 1024 data
+full_epochs = 60  # epochs trained on 1024 data with only large masks
+full_epochs_all = 10 # epochs trained on all positive masks
 
 # model parameters
 filt_nums = 16
@@ -160,9 +161,9 @@ print('Setting up 512-training')
 model = ConvertEncoderToCED(pre_model)
 
 # create segmentation datagens
-# using positive images only
+# using positive, large mask images only
 train_gen, val_gen = get_seg_datagen(
-    pos_img_path, pos_mask_path, train_params, val_params, val_split)
+    pos_img_filt_path, pos_mask_filt_path, train_params, val_params, val_split)
 
 
 # Create callbacks
@@ -218,12 +219,11 @@ full_model.load_weights(best_weight_path)
 full_model.compile(Adam(lr=learnRate), loss=dice_coef_loss)
 
 # Set weight paths
-cur_weight_path = weight_filepath.format('1024train')
 best_weight_path = best_weight_filepath.format('1024train')
 
-# Setup full size datagens
+# Setup full size datagens with only large masks
 train_gen, val_gen = get_seg_datagen(
-    pos_img_path, pos_mask_path, full_train_params, full_val_params, val_split)
+    pos_img_filt_path, pos_mask_filt_path, full_train_params, full_val_params, val_split)
 
 # Create callbacks
 cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
@@ -246,6 +246,18 @@ history_full = full_model.fit_generator(generator=train_gen,
                                         epochs=full_epochs, verbose=1,
                                         callbacks=[cb_check, cb_plateau],
                                         validation_data=val_gen)
+
+# Setup full size datagens with all masks
+train_gen, val_gen = get_seg_datagen(
+    pos_img_path, pos_mask_path, full_train_params, full_val_params, val_split)
+
+# train full size model
+history_full = full_model.fit_generator(generator=train_gen,
+                                        epochs=full_epochs_all, verbose=1,
+                                        callbacks=[cb_check, cb_plateau],
+                                        validation_data=val_gen)
+
+
 
 
 # %% make some demo images
