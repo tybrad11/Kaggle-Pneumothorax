@@ -299,13 +299,13 @@ print(table)
 
 
 # Get and display a few predictions
-for ind in range(5):
-    b_ind = np.random.randint(0, len(full_val_gen))
-    valX, valY = full_val_gen.__getitem__(b_ind)
-    preds = full_model.predict_on_batch(valX)
-    cur_im = valX[0]
-    disp_im = np.concatenate([cur_im[..., c]
-                              for c in range(cur_im.shape[-1])], axis=1)
-    plt.imshow(disp_im, cmap='gray')
-    plt.title('Predicted: {} Actual: {}'.format(preds[0], valY[0]))
-    plt.show()
+# for ind in range(5):
+#     b_ind = np.random.randint(0, len(full_val_gen))
+#     valX, valY = full_val_gen.__getitem__(b_ind)
+#     preds = full_model.predict_on_batch(valX)
+#     cur_im = valX[0]
+#     disp_im = np.concatenate([cur_im[..., c]
+#                               for c in range(cur_im.shape[-1])], axis=1)
+#     plt.imshow(disp_im, cmap='gray')
+#     plt.title('Predicted: {} Actual: {}'.format(preds[0], valY[0]))
+#     plt.show()
