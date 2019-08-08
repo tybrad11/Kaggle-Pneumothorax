@@ -59,8 +59,8 @@ train_weights_filepath = 'Best_Kaggle_Classification_Weights_{}_v4.h5'
 cur_weights_path = train_weights_filepath.format('1024train')
 
 # datagen params
-full_train_params = get_train_params(2, (1024, 1024), 1)
-full_val_params = get_val_params(2, (1024, 1024), 1)
+full_train_params = get_train_params(batch_size, (1024, 1024), 1)
+full_val_params = get_val_params(batch_size, (1024, 1024), 1)
 
 # Create model
 full_model = Inception_model(input_shape=(1024, 1024)+(n_channels,))
@@ -114,8 +114,11 @@ plt.show()
 # print threshold table
 from prettytable import PrettyTable
 table = PrettyTable(['Threshold', 'True Positive Rate', 'False Positive Rate'])
+count = 0
 for t,tp,fp in zip(thresholds,tpr,fpr):
-    table.add(['{:.034f}'.format(t),'{:.034f}'.format(tp),'{:.034f}'.format(fp)])
+    if count % 5 == 0:
+        table.add_row(['{:.04f}'.format(t),'{:.04f}'.format(tp),'{:.04f}'.format(fp)])
+    count += 1
 print(table)
 
 
@@ -128,5 +131,5 @@ for ind in range(5):
     disp_im = np.concatenate([cur_im[..., c]
                               for c in range(cur_im.shape[-1])], axis=1)
     plt.imshow(disp_im, cmap='gray')
-    plt.title('Predicted: {:.04f} Actual: {}'.format(preds[0], valY[0]))
+    plt.title('Predicted: {:.04f} Actual: {}'.format(preds[0,0], valY[0]))
     plt.show()
