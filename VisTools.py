@@ -73,9 +73,10 @@ def DisplayDifferenceMask(im,mask1,mask2,name='Difference Mask',savepath=None):
     plt.suptitle(name)
     ax = fig.axes[0]
     ax.set_axis_off()
-    plt.show()
     if savepath is not None:
         fig.savefig(savepath, bbox_inches='tight')
+    else:
+        plt.show()
     
 #
 def multi_slice_viewer0(volume,title='',labels=[], vrange=[0,1]):
