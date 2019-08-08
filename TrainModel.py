@@ -1,12 +1,13 @@
 # %% Setup
-from VisTools import DisplayDifferenceMask
-import time
 import os
+import time
 from glob import glob
 from os.path import join
 
 import GPUtil
 import numpy as np
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
 from keras.optimizers import Adam
 from natsort import natsorted
@@ -14,12 +15,22 @@ from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
 
-from Datagen import PngClassDataGenerator, PngDataGenerator
-from HelperFunctions import (RenameWeights, get_class_datagen, get_seg_datagen,
-                             get_train_params, get_val_params, WaitForGPU)
 from CustomCallbacks import CyclicLR
+from Datagen import PngClassDataGenerator, PngDataGenerator
+from HelperFunctions import (RenameWeights, WaitForGPU, get_class_datagen,
+                             get_seg_datagen, get_train_params, get_val_params)
 from Losses import dice_coef_loss
 from Models import BlockModel2D, BlockModel_Classifier, ConvertEncoderToCED
+from VisTools import DisplayDifferenceMask
+
+config = tf.ConfigProto()
+# dynamically grow the memory used on the GPU
+config.gpu_options.allow_growth = True
+# to log device placement (on which device the operation ran)
+config.log_device_placement = True
+sess = tf.Session(config=config)
+# set this TensorFlow session as the default session for Keras
+set_session(sess)
 
 os.environ['HDF5_USE_FILE_LOCKING'] = 'false'
 
@@ -69,7 +80,7 @@ learnRate = 1e-4
 val_split = .15
 epochs = [5, 10]  # epochs before and after unfreezing weights
 full_epochs = 60  # epochs trained on 1024 data with only large masks
-full_epochs_all = 10 # epochs trained on all positive masks
+full_epochs_all = 10  # epochs trained on all positive masks
 
 # model parameters
 filt_nums = 16
@@ -169,8 +180,8 @@ train_gen, val_gen = get_seg_datagen(
 # Create callbacks
 best_weight_path = best_weight_filepath.format('512train')
 cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
-                            verbose=1, save_best_only=True,
-                            save_weights_only=True, mode='auto', period=1)
+                           verbose=1, save_best_only=True,
+                           save_weights_only=True, mode='auto', period=1)
 
 cb_plateau = ReduceLROnPlateau(
     monitor='val_loss', factor=.5, patience=3, verbose=1)
@@ -258,8 +269,6 @@ history_full = full_model.fit_generator(generator=train_gen,
                                         validation_data=val_gen)
 
 
-
-
 # %% make some demo images
 
 full_model.load_weights(best_weight_path)
@@ -270,7 +279,8 @@ for rep in range(20):
     preds = full_model.predict_on_batch(testX)
 
     for im, mask, pred in zip(testX, testY, preds):
-        DisplayDifferenceMask(im[..., 0], mask[..., 0], pred[..., 0],savepath='SampleDifferenceMasks_{}.png'.format(count))
+        DisplayDifferenceMask(im[..., 0], mask[..., 0], pred[..., 0],
+                              savepath='SampleDifferenceMasks_{}.png'.format(count))
         count += 1
 
 
