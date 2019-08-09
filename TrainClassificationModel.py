@@ -6,10 +6,13 @@ from os.path import join
 
 import GPUtil
 import numpy as np
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau
 from keras.optimizers import Adam
 from matplotlib import pyplot as plt
 from natsort import natsorted
+from prettytable import PrettyTable
 from sklearn.metrics import auc, confusion_matrix, roc_curve
 from sklearn.model_selection import train_test_split
 from sklearn.utils import class_weight
@@ -20,7 +23,15 @@ from HelperFunctions import (RenameWeights, get_class_datagen, get_seg_datagen,
 from Losses import dice_coef_loss
 from Models import Inception_model
 
-os.environ['HDF5_USE_FILE_LOCKING'] = 'false'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+
+config = tf.ConfigProto()
+# dynamically grow the memory used on the GPU
+config.gpu_options.allow_growth = True
+sess = tf.Session(config=config)
+# set this TensorFlow session as the default session for Keras
+set_session(sess)
 
 
 rng = np.random.RandomState(seed=1)
@@ -291,10 +302,10 @@ plt.legend(loc="lower right")
 plt.show()
 
 # print threshold table
-from prettytable import PrettyTable
 table = PrettyTable(['Threshold', 'True Positive Rate', 'False Positive Rate'])
-for t,tp,fp in zip(thresholds,tpr,fpr):
-    table.add(['{:.034f}'.format(t),'{:.034f}'.format(tp),'{:.034f}'.format(fp)])
+for t, tp, fp in zip(thresholds, tpr, fpr):
+    table.add(['{:.034f}'.format(t), '{:.034f}'.format(
+        tp), '{:.034f}'.format(fp)])
 print(table)
 
 

@@ -1,6 +1,5 @@
 # %% Setup
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 import time
 from glob import glob
 from os.path import join
@@ -24,14 +23,15 @@ from Losses import dice_coef_loss
 from Models import BlockModel2D, BlockModel_Classifier, ConvertEncoderToCED
 from VisTools import DisplayDifferenceMask
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+
 config = tf.ConfigProto()
 # dynamically grow the memory used on the GPU
 config.gpu_options.allow_growth = True
 sess = tf.Session(config=config)
 # set this TensorFlow session as the default session for Keras
 set_session(sess)
-
-os.environ['HDF5_USE_FILE_LOCKING'] = 'false'
 
 
 rng = np.random.RandomState(seed=1)

@@ -1,6 +1,7 @@
 import concurrent.futures
 import csv
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 import sys
 from glob import glob
 from os.path import join
@@ -207,7 +208,7 @@ def SaveImMaskAsPng(img,mask,name,sdir='.'):
     msk_name = '{}_w_mask.png'.format(name)
     bkgd.save(join(sdir,msk_name))
 
-output_dir = 'SampleImagesAndMasks_v4'
+output_dir = 'SampleImagesAndMasks_v5'
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
 tqdm.write('Saving sample images and masks...')
