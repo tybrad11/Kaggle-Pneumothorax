@@ -8,4 +8,4 @@ __pycache__/Losses.cpython-37.pyc
 __pycache__/ProcessMasks.cpython-37.pyc
 __pycache__/HelperFunctions.cpython-37.pyc
 *.png
-Submission_*.csv
+MultiProcess_test.py
