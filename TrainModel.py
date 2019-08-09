@@ -1,5 +1,6 @@
 # %% Setup
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 import time
 from glob import glob
 from os.path import join
@@ -26,8 +27,6 @@ from VisTools import DisplayDifferenceMask
 config = tf.ConfigProto()
 # dynamically grow the memory used on the GPU
 config.gpu_options.allow_growth = True
-# to log device placement (on which device the operation ran)
-config.log_device_placement = True
 sess = tf.Session(config=config)
 # set this TensorFlow session as the default session for Keras
 set_session(sess)
