@@ -4,7 +4,7 @@ from keras.initializers import RandomNormal
 from keras.layers import (BatchNormalization, Conv2D, Conv2DTranspose, Conv3D,
                           Cropping2D, Dense, Flatten, GlobalAveragePooling2D,
                           Input, Lambda, MaxPooling2D, Reshape, UpSampling2D,
-                          ZeroPadding2D, ZeroPadding3D, add, concatenate)
+                          ZeroPadding2D, ZeroPadding3D, Add, concatenate)
 from keras.layers.advanced_activations import ELU, LeakyReLU
 from keras.models import Model
 
@@ -300,3 +300,78 @@ def Inception_model(input_shape=(299, 299, 3)):
     # x = Flatten()(x)
     x = Dense(1, activation='sigmoid')(incep_output)
     return Model(inputs=input_layer, outputs=x)
+
+def res_unet(input_shape):
+    
+    input_tensor = Input(shape=(input_shape),name='input_layer')
+    x = Conv2D(24, (3,3), activation='relu', padding='same')(input_tensor)
+    res1 = Conv2D(24, (1,1), activation='relu', padding='same')(input_tensor) #to be added at end of block1
+    x = BatchNormalization()(x)
+    x = Conv2D(24, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    
+    block1 = Add()([x,res1]) #to be contatenated with decoder
+    
+    x = MaxPooling2D((2, 2))(block1)
+    res2 = Conv2D(48, (1,1), activation='relu', padding='same')(x)#to be added at end of block2
+    x = Conv2D(48, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Conv2D(48, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    
+    block2 = Add()([x, res2])#to be contatenated with decoder
+    
+    x = MaxPooling2D((2, 2))(block2)
+    res3 = Conv2D(96, (1,1), activation='relu', padding='same')(x)#to be added at end of block3
+    x = Conv2D(96, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Conv2D(96, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    
+    block3 = Add()([x, res3])#to be contatenated with decoder
+    
+    x = MaxPooling2D((2, 2))(block3)
+    res4 = Conv2D(192, (1,1), activation='relu', padding='same')(x)#to be added at end of block4
+    x = Conv2D(192, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Conv2D(192, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    
+    x = Add()([x, res4])# now go to Decoder side -> UpSampling
+    
+    x = UpSampling2D((2, 2))(x)
+    x = concatenate([x, block3])
+    res5 = Conv2D(96, (1,1), activation='relu', padding='same')(x)#to be added at the end of block
+    x = Conv2D(96, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Conv2D(96, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Add()([x,res5])
+    
+    x = UpSampling2D((2, 2))(x)
+    x = concatenate([x, block2])
+    res6 = Conv2D(48, (1,1), activation='relu', padding='same')(x)#to be added at the end of block
+    x = Conv2D(48, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Conv2D(48, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Add()([x,res6])
+    
+    x = UpSampling2D((2, 2))(x)
+    x = concatenate([x, block1])
+    res7 = Conv2D(24, (1,1), activation='relu', padding='same')(x)#to be added at the end of block
+    x = Conv2D(24, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Conv2D(24, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Add()([x,res7])
+    
+    # end part
+    x = Conv2D(1, (1,1), activation='relu', padding='same')(x)
+    res_input = Conv2D(1, (1,1), activation='relu', padding='same')(input_tensor)#this seems likely the step, although the graph isn’t clear on this
+    x = Add()([x, res_input])
+    
+    out = Conv2D(1, (1,1), activation='sigmoid', padding='same')(x)
+    
+    return Model(inputs=input_tensor, outputs=out)
+
