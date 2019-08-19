@@ -19,7 +19,9 @@ import os
 import time
 from glob import glob
 from os.path import join
+import sys
 
+sys.path.append('~/deep_learning/jacobs_git/Kaggle-Pneumothorax')
 import GPUtil
 import numpy as np
 import tensorflow as tf
@@ -41,11 +43,11 @@ from VisTools import DisplayDifferenceMask
 
 import argparse
 
-def get_seg_model(seg_model_name):
+def get_seg_model(seg_model_name, input_dims):
     if seg_model_name.lower() == 'block2d':
-        full_model = BlockModel2D((1024, 1024, n_channels), filt_num=16, numBlocks=4)
+        full_model = BlockModel2D(input_dims, filt_num=16, numBlocks=4)
     elif seg_model_name.lower() == 'resunet':
-        full_model = res_unet((1024, 1024))
+        full_model = res_unet(input_dims)
     
     return full_model
     
@@ -106,7 +108,7 @@ pos_img_path = '/data/Kaggle/pos-all-png'
 pos_mask_path = '/data/Kaggle/pos-all-mask-png'
 
 pretrain_weights_filepath = 'Pretrain_class_weights.h5'
-best_weight_filepath = 'Best_Kaggle_Weights_{}_v{}.h5'
+best_weight_filepath = 'Best_Kaggle_Weights_{}_{}_v{}.h5'
 
 # pre-train parameters
 pre_im_dims = (512, 512)
@@ -222,7 +224,7 @@ if not skip_encoder_training:
     
     
     # Create callbacks
-    best_weight_path = best_weight_filepath.format('512train', model_num)
+    best_weight_path = best_weight_filepath.format(seg_model_name,'512train', model_num)
     cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
                                verbose=1, save_best_only=True,
                                save_weights_only=True, mode='auto', period=1)
@@ -268,12 +270,14 @@ if not skip_encoder_training:
     
     # make full-size model
     if seg_model_name.lower() == 'blockmodel2d':
+        input_dims = (1024, 1024, n_channels)
         full_model = get_seg_model(seg_model_name)
         full_model.load_weights(best_weight_path)
 
 
 else:
-    full_model = get_seg_model(seg_model_name)    
+    input_dims = (1024, 1024, n_channels)
+    full_model = get_seg_model(seg_model_name, input_dims)    
     
     
     
@@ -281,7 +285,7 @@ else:
 full_model.compile(Adam(lr=learnRate), loss=dice_coef_loss)
 
 # Set weight paths
-best_weight_path = best_weight_filepath.format('1024train', model_num)
+best_weight_path = best_weight_filepath.format(seg_model_name,'1024train', model_num)
 
 # Setup full size datagens with only large masks
 train_gen, val_gen = get_seg_datagen(
