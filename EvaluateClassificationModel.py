@@ -1,5 +1,6 @@
 # %% Setup
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 import time
 from glob import glob
 from os.path import join
@@ -19,8 +20,6 @@ from HelperFunctions import (RenameWeights, get_class_datagen, get_seg_datagen,
                              get_train_params, get_val_params)
 from Losses import dice_coef_loss
 from Models import Inception_model
-
-os.environ['HDF5_USE_FILE_LOCKING'] = 'false'
 
 
 rng = np.random.RandomState(seed=1)

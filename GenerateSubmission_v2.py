@@ -1,14 +1,19 @@
 import concurrent.futures
 import csv
+import math
 import os
 import sys
+from datetime import timedelta
 from glob import glob
 from os.path import join
+from time import time
 
 import cv2
 import GPUtil
 import keras
 import numpy as np
+import tensorflow as tf
+from keras.backend.tensorflow_backend import set_session
 from matplotlib import pyplot as plt
 from natsort import natsorted
 from PIL import Image
@@ -16,13 +21,21 @@ from scipy.ndimage.measurements import label as scipy_label
 from skimage.exposure import equalize_adapthist
 from tqdm import tqdm
 
+from HelperFunctions import ConvertModelOutputToLinear
 from mask_functions_pneumothorax import mask2rle, rle2mask
 from Models import BlockModel2D, Inception_model
 from ProcessMasks import CleanMask_v1
 from VisTools import mask_viewer0
-from time import time
-from HelperFunctions import ConvertModelOutputToLinear
-import math
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+
+config = tf.ConfigProto()
+# dynamically grow the memory used on the GPU
+config.gpu_options.allow_growth = True
+sess = tf.Session(config=config)
+# set this TensorFlow session as the default session for Keras
+set_session(sess)
 
 start_time = time()
 
@@ -39,6 +52,7 @@ def splitfile(file):
     _, file = os.path.split(file)
     return os.path.splitext(file)[0]
 
+
 # Testing images
 test_datapath = '/data/Kaggle/test-png'
 
@@ -47,22 +61,22 @@ weight_dir = './SavedWeights'
 
 # Path to classification model weights to use
 class_weights_fname = 'Classification_Inception_1024.h5'
-class_weights_filepath = join(weight_dir,class_weights_fname)
+class_weights_filepath = join(weight_dir, class_weights_fname)
 
 
 # Path(s) to segmentation model weights to use
 # Provide list for ensemble evaluation, string for single model
 # seg_weight_name = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024train_v2.h5','Best_Kaggle_Weights_1024train_v3.h5']
 # seg_weight_filepath = [join(weight_dir,name) for name in seg_weight_fname]
-seg_weight_fname = 'Best_Kaggle_Weights_1024train_v4.h5'
-seg_weight_filepath = join(weight_dir,seg_weight_fname)
+seg_weight_fname = 'Segmentation_BlockModel_16-5_1024_all_pos.h5'
+seg_weight_filepath = join(weight_dir, seg_weight_fname)
 
 # Where to save submission output
-submission_filepath = 'Submission_v9.csv'
+submission_filepath = 'Submissions/Submission_v10.csv'
 
 # Whether to use ensemble
 # automatically inferred from weight_filepath being a list
-use_ensemble = isinstance(seg_weight_filepath,list)
+use_ensemble = isinstance(seg_weight_filepath, list)
 # Whether to use CLAHE normalization in image pre-processing
 use_clahe = True
 
@@ -70,13 +84,15 @@ use_clahe = True
 batch_size = 4
 im_dims = (1024, 1024)
 n_channels = 1
-thresh = .8 # threshold for classification model
+thresh = .85  # threshold for classification model
 
 # Get list of testing files
 img_files = natsorted(glob(join(test_datapath, '*.png')))
 
 # Function for loading in testing images
-def LoadImg(f, dims=(1024,1024)):
+
+
+def LoadImg(f, dims=(1024, 1024)):
     img = Image.open(f)
     img = cv2.resize(np.array(img), dims).astype(np.float)
     img /= 255.
@@ -85,13 +101,15 @@ def LoadImg(f, dims=(1024,1024)):
     return img
 
 # Function for generating submission data for a sample
-def GetSubData(file,label,mask):
-    mask = mask[...,0]
+
+
+def GetSubData(file, label, mask):
+    mask = mask[..., 0]
     mask = (mask > .5).astype(np.int)
     fid = splitfile(file)
 
     if label == 0:
-        return [fid,-1]
+        return [fid, -1]
 
     processed_mask = CleanMask_v1(mask)
     lbl_mask, numObj = scipy_label(processed_mask)
@@ -105,11 +123,13 @@ def GetSubData(file,label,mask):
 
 # Function for getting linear output masks
 # from segmentation model for ensemble purposes
-def GetBlockModelMasks(weights_path,test_imgs,batch_size):
+
+
+def GetBlockModelMasks(weights_path, test_imgs, batch_size):
     # Create model
     tqdm.write('Loading segmentation model...')
     model = BlockModel2D(input_shape=im_dims+(n_channels,),
-                        filt_num=16, numBlocks=4)
+                         filt_num=16, numBlocks=4)
     # Load weights
     model.load_weights(weights_path)
 
@@ -123,6 +143,8 @@ def GetBlockModelMasks(weights_path,test_imgs,batch_size):
     return masks
 
 # sigmoid function to apply after ensembling
+
+
 def sigmoid(x):
     return 1 / (1 + math.e ** -x)
 
@@ -132,22 +154,22 @@ tqdm.write('Loading images...')
 img_list = list()
 # using multi processing for efficiency
 with concurrent.futures.ProcessPoolExecutor() as executor:
-    for img_array in tqdm(executor.map(LoadImg, img_files),total=len(img_files)):
+    for img_array in tqdm(executor.map(LoadImg, img_files), total=len(img_files)):
         # put results into correct output list
         img_list.append(img_array)
 # convert into 4D stack for model evaluation
-test_imgs = np.stack(img_list)[...,np.newaxis]
+test_imgs = np.stack(img_list)[..., np.newaxis]
 
 
 # Load classification model, for stratifying
 tqdm.write('Loading classification model...')
-class_model = Inception_model(input_shape=(1024,1024)+(n_channels,))
+class_model = Inception_model(input_shape=(1024, 1024)+(n_channels,))
 class_model.load_weights(class_weights_filepath)
 
 # Get classification predictions
 tqdm.write('Making classification predictions...')
-pred_labels = class_model.predict(test_imgs,batch_size=4,verbose=1)
-pred_labels = (pred_labels[:,0]>thresh).astype(np.int)
+pred_labels = class_model.predict(test_imgs, batch_size=4, verbose=1)
+pred_labels = (pred_labels[:, 0] > thresh).astype(np.int)
 
 # remove model, to save memory
 del class_model
@@ -156,7 +178,8 @@ tqdm.write('Finished with classification model')
 if use_ensemble:
     # Get masks from segmentation model ensemble
     tqdm.write('Starting model ensemble...')
-    all_masks = [GetBlockModelMasks(p,test_imgs,batch_size) for p in tqdm(seg_weight_filepath)]
+    all_masks = [GetBlockModelMasks(p, test_imgs, batch_size)
+                 for p in tqdm(seg_weight_filepath)]
 
     # ensemble masks together
     # just averaging right now
@@ -167,7 +190,7 @@ if use_ensemble:
 else:
     tqdm.write('Loading segmentation model...')
     model = BlockModel2D(input_shape=im_dims+(n_channels,),
-                        filt_num=16, numBlocks=4)
+                         filt_num=16, numBlocks=4)
     model.load_weights(seg_weight_filepath)
     tqdm.write('Getting predicted masks...')
     masks = model.predict(test_imgs, batch_size=batch_size, verbose=1)
@@ -178,7 +201,7 @@ submission_data = []
 # process mask
 tqdm.write('Processing masks...')
 with concurrent.futures.ProcessPoolExecutor() as executor:
-    for sub_data in tqdm(executor.map(GetSubData,img_files,pred_labels,masks),total=len(img_files)):
+    for sub_data in tqdm(executor.map(GetSubData, img_files, pred_labels, masks), total=len(img_files)):
         # put results into output list
         submission_data.append(sub_data)
 
@@ -191,36 +214,38 @@ with open(submission_filepath, mode='w', newline='') as f:
         writer.writerow(data)
 
 # write some images to png
-def SaveImMaskAsPng(img,mask,name,sdir='.'):
+
+
+def SaveImMaskAsPng(img, mask, name, sdir='.'):
     # make mask into rgba
-    yellow_mask = np.repeat(mask,4,axis=-1)
-    yellow_mask[...,2] = 0
-    yellow_mask[...,3] = .3*yellow_mask[...,3]
+    yellow_mask = np.repeat(mask, 4, axis=-1)
+    yellow_mask[..., 2] = 0
+    yellow_mask[..., 3] = .3*yellow_mask[..., 3]
     ymask = (255*yellow_mask).astype(np.uint8)
     # make background image into rgb and save
     bkgd = Image.fromarray((255*img).astype(np.uint8)).convert('RGB')
     im_name = '{}_image.png'.format(name)
-    bkgd.save(join(sdir,im_name))
+    bkgd.save(join(sdir, im_name))
     # paste on mask image and save
     fgd = Image.fromarray(ymask)
-    bkgd.paste(fgd,(0,0),fgd)    
+    bkgd.paste(fgd, (0, 0), fgd)
     msk_name = '{}_w_mask.png'.format(name)
-    bkgd.save(join(sdir,msk_name))
+    bkgd.save(join(sdir, msk_name))
 
-output_dir = 'SampleImagesAndMasks_v4'
+
+output_dir = 'SampleImagesAndMasks_v5'
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
 tqdm.write('Saving sample images and masks...')
 n = 50
 name = 'Sample_{}_{}'
-for ind,img,mask,label in tqdm(zip(range(n),test_imgs[:n],masks[:n],pred_labels[:n]),total=n):
+for ind, img, mask, label in tqdm(zip(range(n), test_imgs[:n], masks[:n], pred_labels[:n]), total=n):
     if label:
-        cur_name = name.format(ind,'pos')
+        cur_name = name.format(ind, 'pos')
     else:
-        cur_name = name.format(ind,'neg')
-    SaveImMaskAsPng(img[...,0],mask,cur_name,output_dir)
+        cur_name = name.format(ind, 'neg')
+    SaveImMaskAsPng(img[..., 0], mask, cur_name, output_dir)
 
 print('Done')
 finish_time = time()
-from datetime import timedelta
 print('Time elapsed: {}'.format(timedelta(seconds=finish_time-start_time)))

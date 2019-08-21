@@ -75,6 +75,7 @@ def DisplayDifferenceMask(im,mask1,mask2,name='Difference Mask',savepath=None):
     ax.set_axis_off()
     if savepath is not None:
         fig.savefig(savepath, bbox_inches='tight')
+        plt.close()
     else:
         plt.show()
     
