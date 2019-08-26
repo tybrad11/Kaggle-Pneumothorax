@@ -4,7 +4,9 @@
 input: 
     seg_model_name  (string)  -- determines which model to use
     model_num  (string)  --  for saving the model 
-    skip_pretrain (bool) -- skip the pre-training of the classification 
+    skip_positive_only_training (bool)  -- Skip pretraining segmentation model 
+                                            on only images that are positive?
+    skip_encoder_pretrain (bool) -- skip the pre-training of the classification 
                             model on NIH data
     skip_encoder_training -- skip any training of classification model/encoder
 
@@ -38,32 +40,80 @@ from Datagen import PngClassDataGenerator, PngDataGenerator
 from HelperFunctions import (RenameWeights, WaitForGPU, get_class_datagen,
                              get_seg_datagen, get_train_params, get_val_params)
 from Losses import dice_coef_loss
-from Models import BlockModel2D, BlockModel_Classifier, ConvertEncoderToCED, res_unet
+from Models import (BlockModel2D, BlockModel_Classifier, ConvertEncoderToCED, 
+                                res_unet, res_unet_encoder)
 from VisTools import DisplayDifferenceMask
 
 import argparse
 
+###########################  Functions  ######################################
+
 def get_seg_model(seg_model_name, input_dims):
+    #return segmentation model based on name
     if seg_model_name.lower() == 'block2d':
-        full_model = BlockModel2D(input_dims, filt_num=16, numBlocks=4)
+        full_model = BlockModel2D(input_dims, filt_nums=16, numBlocks=4)
     elif seg_model_name.lower() == 'resunet':
         full_model = res_unet(input_dims)
     
     return full_model
+
+def get_classifier_model(seg_model_name, input_dims):
+    #return segmentation model based on name
+    if seg_model_name.lower() == 'block2d':
+        full_model = BlockModel_Classifier(input_shape=input_dims,
+                                          filt_nums=16, numBlocks=4)
+    elif seg_model_name.lower() == 'resunet':
+        full_model = res_unet_encoder(input_dims)
     
+    return full_model
 
+def get_data_and_train_model(full_model,
+                             img_path,
+                             mask_path,
+                             full_train_params,
+                             full_val_params,
+                             val_split,
+                             best_weight_path,
+                             cb_check,
+                             learnRate,
+                             full_epochs,
+                             cb_plateau):        
+   
+    train_gen, val_gen = get_seg_datagen(
+        img_path, mask_path, full_train_params, full_val_params, val_split)
+    
+    clr_step = 4*len(train_gen)
+    cb_clr = CyclicLR(base_lr=learnRate/100, max_lr=learnRate*10,
+                      step_size=clr_step, mode='triangular2')
+    
+    print('-------------------------\n--- Starting training ---\n-------------------------')
+    
+    # train full size model
+    history_full = full_model.fit_generator(generator=train_gen,
+                                            epochs=full_epochs, verbose=1,
+                                            callbacks=[cb_check, cb_plateau],
+                                            validation_data=val_gen)    
+    return history_full, full_model, train_gen, val_gen 
+
+##############################################################################
+    
+## parse inputs
 parser = argparse.ArgumentParser(description='Model and parameters')
-
 parser.add_argument('seg_model_name', type=str, help='Segmentation model type')
 parser.add_argument('model_num', type=str, help='Model save number')
-parser.add_argument('skip_pretrain', type=bool, help='Skip pretrain ?(True of False)')
+parser.add_argument('skip_positive_only_training', type=bool, help='Skip training segmentation model on only images that are positive? (True of False)')
+parser.add_argument('skip_all_cases_training', type=bool, help='Skip training segmentation model on both positive and negative images? (True of False)')
+parser.add_argument('skip_quality_only_training', type=bool, help='Skip training segmentation model on only images that are positive and high quality? (True of False)')
+parser.add_argument('skip_encoder_pretrain', type=bool, help='Skip pretrain ?(True of False)')
 parser.add_argument('skip_encoder_training', type=bool, help='Only train on segmentation images, not classification? (True of False)')
 args = parser.parse_args()
 
-
 seg_model_name = args.seg_model_name
 model_num = args.model_num
-skip_pretrain = args.skip_pretrain
+skip_positive_only_training = args.skip_positive_only_training
+skip_all_cases_training = args.skip_all_cases_training
+skip_quality_only_training = args.skip_quality_only_training
+skip_encoder_pretrain = args.skip_encoder_pretrain
 skip_encoder_training = args.skip_encoder_training
   
 
@@ -99,15 +149,23 @@ pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_s
 # pos_img_path = '/data/Kaggle/pos-norm-png'
 # pos_mask_path = '/data/Kaggle/pos-mask-png'
 
-# use non-normalized images with large masks
-pos_img_filt_path = '/data/Kaggle/pos-filt-png'
+# use clahe-normalized images with only LARGE and POSITIVE masks
+pos_img_filt_path = '/data/Kaggle/pos-filt-png-clahe'
 pos_mask_filt_path = '/data/Kaggle/pos-filt-mask-png'
 
-# use non-normalized images with (almost) all masks
-pos_img_path = '/data/Kaggle/pos-all-png'
+# use clahe-normalized images with (almost) all POSITIVE masks
+pos_img_path = '/data/Kaggle/pos-all-png-clahe'
 pos_mask_path = '/data/Kaggle/pos-all-mask-png'
 
-pretrain_weights_filepath = 'Pretrain_class_weights.h5'
+# use clahe-normalized imaged with all masks
+all_img_path= '/data/Kaggle/train-png-clahe'
+all_mask_path= '/data/Kaggle/train-mask'
+
+#clahe-normalized postivies rated as high quality
+qual_img_path = '/data/Kaggle/pos-all-png-quality-clahe'
+qual_mask_path =  '/data/Kaggle/pos-all-png-quality-mask'
+
+pretrain_weights_filepath = 'Pretrain_class_weights_{}_v{}.h5'
 best_weight_filepath = 'Best_Kaggle_Weights_{}_{}_v{}.h5'
 
 # pre-train parameters
@@ -123,9 +181,9 @@ n_channels = 1
 batch_size = 4
 learnRate = 1e-4
 val_split = .15
-epochs = [5, 10]  # epochs before and after unfreezing weights
+epochs_unfreeze = [5, 10]  # epochs before and after unfreezing weights
 full_epochs = 60  # epochs trained on 1024 data with only large masks
-full_epochs_all = 10  # epochs trained on all positive masks
+#full_epochs_all = 10  # epochs trained on all positive masks
 
 # model parameters
 filt_nums = 16
@@ -140,12 +198,21 @@ val_params = get_val_params(batch_size, im_dims, n_channels)
 full_train_params = get_train_params(2, (1024, 1024), 1)
 full_val_params = get_val_params(2, (1024, 1024), 1)
 
+#I've saved the preprocessed data with clahe, so remove it
+#pre_train_params["preprocessing_function"] = 'None'
+#pre_val_params["preprocessing_function"] = 'None'
+train_params["preprocessing_function"] = 'None'
+val_params["preprocessing_function"] = 'None'
+full_train_params["preprocessing_function"] = 'None'
+full_val_params["preprocessing_function"] = 'None'
+
+
 # %% ~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~Pre-training~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~~
 if not skip_encoder_training:
     
-    if not skip_pretrain:
+    if not skip_encoder_pretrain:
         print('---------------------------------')
         print('---- Setting up pre-training ----')
         print('---------------------------------')
@@ -155,14 +222,14 @@ if not skip_encoder_training:
             pre_train_datapath, pre_train_negative_datapath, pre_train_params, pre_val_params, pre_val_split)
     
         # Create model
-        pre_model = BlockModel_Classifier(input_shape=pre_im_dims+(pre_n_channels,),
-                                          filt_num=filt_nums, numBlocks=num_blocks)
+        pre_model = get_classifier_model(seg_model_name, pre_im_dims+(pre_n_channels,))
+
     
         # Compile model
         pre_model.compile(Adam(), loss='binary_crossentropy', metrics=['accuracy'])
     
         # Create callbacks
-        cb_check = ModelCheckpoint(pretrain_weights_filepath, monitor='val_loss',
+        cb_check = ModelCheckpoint(pretrain_weights_filepath.format(seg_model_name, model_num), monitor='val_loss',
                                    verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
     
         print('---------------------------------')
@@ -177,7 +244,7 @@ if not skip_encoder_training:
                                               validation_data=pre_val_gen)
     
         # Load best weights
-        pre_model.load_weights(pretrain_weights_filepath)
+        pre_model.load_weights(pretrain_weights_filepath.format(seg_model_name, model_num))
     
         # Calculate confusion matrix
         print('Calculating classification confusion matrix...')
@@ -203,10 +270,9 @@ if not skip_encoder_training:
     
     else:
         # Just create model, then load weights
-        pre_model = BlockModel_Classifier(input_shape=pre_im_dims+(pre_n_channels,),
-                                          filt_num=filt_nums, numBlocks=num_blocks)
+        pre_model = get_classifier_model(seg_model_name, pre_im_dims+(pre_n_channels,))
         # Load best weights
-        pre_model.load_weights(pretrain_weights_filepath)
+        pre_model.load_weights(pretrain_weights_filepath.format(seg_model_name, model_num))
     
     # %% ~~~~~~~~~~~~~~~~~~~~~~~
     # ~~~~~~ Training ~~~~~~~
@@ -215,7 +281,7 @@ if not skip_encoder_training:
     print('Setting up 512-training')
     
     # convert to segmentation model
-    model = ConvertEncoderToCED(pre_model)
+    model = ConvertEncoderToCED(pre_model, seg_model_name)
     
     # create segmentation datagens
     # using positive, large mask images only
@@ -240,7 +306,7 @@ if not skip_encoder_training:
     print('---------------------------------')
     
     history = model.fit_generator(generator=train_gen,
-                                  epochs=epochs[0], verbose=1,
+                                  epochs=epochs_unfreeze[0], verbose=1,
                                   callbacks=[cb_plateau],
                                   validation_data=val_gen)
     
@@ -256,7 +322,7 @@ if not skip_encoder_training:
     print('----------------------------------')
     
     history2 = model.fit_generator(generator=train_gen,
-                                   epochs=epochs[1],
+                                   epochs=epochs_unfreeze[1],
                                    verbose=1,
                                    callbacks=[cb_check, cb_plateau],
                                    validation_data=val_gen)
@@ -268,17 +334,17 @@ if not skip_encoder_training:
     
     print('Setting up 1024 training')
     
-    # make full-size model
-    if seg_model_name.lower() == 'blockmodel2d':
-        input_dims = (1024, 1024, n_channels)
-        full_model = get_seg_model(seg_model_name)
-        full_model.load_weights(best_weight_path)
+#    # make full-size model
+#    if seg_model_name.lower() == 'blockmodel2d':
+    input_dims = (1024, 1024, n_channels)
+    full_model = get_seg_model(seg_model_name, input_dims)
+    full_model.load_weights(best_weight_path)
 
 
 else:
     input_dims = (1024, 1024, n_channels)
     full_model = get_seg_model(seg_model_name, input_dims)    
-    
+
     
     
 # Compile model
@@ -287,46 +353,49 @@ full_model.compile(Adam(lr=learnRate), loss=dice_coef_loss)
 # Set weight paths
 best_weight_path = best_weight_filepath.format(seg_model_name,'1024train', model_num)
 
-# Setup full size datagens with only large masks
-train_gen, val_gen = get_seg_datagen(
-    pos_img_filt_path, pos_mask_filt_path, full_train_params, full_val_params, val_split)
 
 # Create callbacks
+cb_plateau = ReduceLROnPlateau(monitor='val_loss', factor=.5, patience=3, verbose=1)
 cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
                            verbose=1, save_best_only=True,
-                           save_weights_only=True, mode='auto', period=1)
+                           save_weights_only=True, mode='auto', period=1)    
+#train
 
-# cb_plateau = ReduceLROnPlateau(
-#     monitor='val_loss', factor=.5, patience=3, verbose=1)
-# cyclical learning rate
-clr_step = 4*len(train_gen)
-cb_clr = CyclicLR(base_lr=learnRate/100, max_lr=learnRate*10,
-                  step_size=clr_step, mode='triangular2')
+#train with all data
+if not skip_all_cases_training:
+    print('Training with all data')
+    history_full, full_model, train_gen, val_gen  = get_data_and_train_model(full_model, 
+                                    all_img_path, all_mask_path, 
+                                    full_train_params, full_val_params, val_split, 
+                                    best_weight_path, cb_check, learnRate, 
+                                    full_epochs, cb_plateau)
 
-print('---------------------------------')
-print('---- Starting 1024-training -----')
-print('---------------------------------')
+#if post-training with only positive masks
+if not skip_positive_only_training:
+    print('Training with only positives...')
+    history_full, full_model, train_gen, val_gen  = get_data_and_train_model(full_model, 
+                                pos_img_path, pos_mask_path, 
+                                full_train_params, full_val_params, val_split, 
+                                best_weight_path, cb_check, learnRate, 
+                                full_epochs, cb_plateau)
 
-# train full size model
-history_full = full_model.fit_generator(generator=train_gen,
-                                        epochs=full_epochs, verbose=1,
-                                        callbacks=[cb_check, cb_plateau],
-                                        validation_data=val_gen)
 
-# Setup full size datagens with all masks
-train_gen, val_gen = get_seg_datagen(
-    pos_img_path, pos_mask_path, full_train_params, full_val_params, val_split)
-
-# train full size model
-history_full = full_model.fit_generator(generator=train_gen,
-                                        epochs=full_epochs_all, verbose=1,
-                                        callbacks=[cb_check, cb_plateau],
-                                        validation_data=val_gen)
+if not skip_quality_only_training:
+    print('Training with only quality positives...')
+    history_full, full_model, train_gen, val_gen  = get_data_and_train_model(full_model, 
+                                qual_img_path, qual_mask_path, 
+                                full_train_params, full_val_params, val_split, 
+                                best_weight_path, cb_check, learnRate, 
+                                full_epochs, cb_plateau)
 
 
 # %% make some demo images
 
 full_model.load_weights(best_weight_path)
+
+folder_save='sample_difference_images_{}_v{}'.format(seg_model_name, model_num)
+if not os.path.exists(folder_save):
+    os.mkdir(folder_save)
 
 count = 0
 for rep in range(20):
@@ -335,7 +404,8 @@ for rep in range(20):
 
     for im, mask, pred in zip(testX, testY, preds):
         DisplayDifferenceMask(im[..., 0], mask[..., 0], pred[..., 0],
-                              savepath='SampleDifferenceMasks_{}.png'.format(count))
+                              savepath=os.path.join(folder_save, 
+                                'SampleDifferenceMasks_{}.png'.format(count)))
         count += 1
 
 

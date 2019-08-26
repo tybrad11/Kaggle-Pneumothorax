@@ -1,5 +1,6 @@
 import numpy as np
 from keras.applications.inception_v3 import InceptionV3
+from keras.applications.densenet import DenseNet121
 from keras.initializers import RandomNormal
 from keras.layers import (BatchNormalization, Conv2D, Conv2DTranspose, Conv3D,
                           Cropping2D, Dense, Flatten, GlobalAveragePooling2D,
@@ -8,6 +9,7 @@ from keras.layers import (BatchNormalization, Conv2D, Conv2DTranspose, Conv3D,
 from keras.layers.advanced_activations import ELU, LeakyReLU
 from keras.models import Model
 
+import keras_segmentation as keras_seg
 
 # Parameterized 2D Block Model
 def BlockModel2D(input_shape, filt_num=16, numBlocks=3):
@@ -223,7 +225,7 @@ def BlockModel_Classifier(input_shape, filt_num=16, numBlocks=3):
     return Model(lay_input, lay_out)
 
 
-def ConvertEncoderToCED(model):
+def ConvertEncoderToCED(model, model_name):
     # Returns a model with frozen encoder layers
     # and complimentary, unfrozen decoder layers
     # get input layer
@@ -239,55 +241,94 @@ def ConvertEncoderToCED(model):
         layer.trainable = False
     
     use_bn = True
-
-    # make expanding blocks
-    expnums = list(range(1, numBlocks+1))
-    expnums.reverse()
-    for dd in expnums:
-        if dd < len(skip_list):
-            x = concatenate([skip_list[dd-1], x],
-                            name='skip_connect_{}'.format(dd))
-        x1 = Conv2D(filt_num*dd, (1, 1), padding='same',
-                    name='DeConv1_{}'.format(dd))(x)
-        if use_bn:
-            x1 = BatchNormalization()(x1)
-        x1 = ELU(name='elu_Dx1_{}'.format(dd))(x1)
-        x3 = Conv2D(filt_num*dd, (3, 3), padding='same',
-                    name='DeConv3_{}'.format(dd))(x)
-        if use_bn:
-            x3 = BatchNormalization()(x3)
-        x3 = ELU(name='elu_Dx3_{}'.format(dd))(x3)
-        x51 = Conv2D(filt_num*dd, (3, 3), padding='same',
-                     name='DeConv51_{}'.format(dd))(x)
-        if use_bn:
-            x51 = BatchNormalization()(x51)
-        x51 = ELU(name='elu_Dx51_{}'.format(dd))(x51)
-        x52 = Conv2D(filt_num*dd, (3, 3), padding='same',
-                     name='DeConv52_{}'.format(dd))(x51)
-        if use_bn:
-            x52 = BatchNormalization()(x52)
-        x52 = ELU(name='elu_Dx52_{}'.format(dd))(x52)
-        x = concatenate([x1, x3, x52], name='Dmerge_{}'.format(dd))
-        x = Conv2D(filt_num*dd, (1, 1), padding='valid',
-                   name='DeConvAll_{}'.format(dd))(x)
-        if use_bn:
-            x = BatchNormalization()(x)
-        x = ELU(name='elu_Dall_{}'.format(dd))(x)
-        x = UpSampling2D(size=(2, 2), name='UpSample_{}'.format(dd))(x)
-        x = Conv2D(filt_num*dd, (3, 3), padding='same',
-                   name='DeConvClean1_{}'.format(dd))(x)
-        if use_bn:
-            x = BatchNormalization()(x)
-        x = ELU(name='elu_Dclean1_{}'.format(dd))(x)
-        x = Conv2D(filt_num*dd, (3, 3), padding='same',
-                   name='DeConvClean2_{}'.format(dd))(x)
-        if use_bn:
-            x = BatchNormalization()(x)
-        x = ELU(name='elu_Dclean2_{}'.format(dd))(x)
-
-    # classifier
-    lay_out = Conv2D(1, (1, 1), activation='sigmoid', name='output_layer')(x)
-
+    if model_name.lower() == 'block2d':
+        # make expanding blocks
+        expnums = list(range(1, numBlocks+1))
+        expnums.reverse()
+        for dd in expnums:
+            if dd < len(skip_list):
+                x = concatenate([skip_list[dd-1], x],
+                                name='skip_connect_{}'.format(dd))
+            x1 = Conv2D(filt_num*dd, (1, 1), padding='same',
+                        name='DeConv1_{}'.format(dd))(x)
+            if use_bn:
+                x1 = BatchNormalization()(x1)
+            x1 = ELU(name='elu_Dx1_{}'.format(dd))(x1)
+            x3 = Conv2D(filt_num*dd, (3, 3), padding='same',
+                        name='DeConv3_{}'.format(dd))(x)
+            if use_bn:
+                x3 = BatchNormalization()(x3)
+            x3 = ELU(name='elu_Dx3_{}'.format(dd))(x3)
+            x51 = Conv2D(filt_num*dd, (3, 3), padding='same',
+                         name='DeConv51_{}'.format(dd))(x)
+            if use_bn:
+                x51 = BatchNormalization()(x51)
+            x51 = ELU(name='elu_Dx51_{}'.format(dd))(x51)
+            x52 = Conv2D(filt_num*dd, (3, 3), padding='same',
+                         name='DeConv52_{}'.format(dd))(x51)
+            if use_bn:
+                x52 = BatchNormalization()(x52)
+            x52 = ELU(name='elu_Dx52_{}'.format(dd))(x52)
+            x = concatenate([x1, x3, x52], name='Dmerge_{}'.format(dd))
+            x = Conv2D(filt_num*dd, (1, 1), padding='valid',
+                       name='DeConvAll_{}'.format(dd))(x)
+            if use_bn:
+                x = BatchNormalization()(x)
+            x = ELU(name='elu_Dall_{}'.format(dd))(x)
+            x = UpSampling2D(size=(2, 2), name='UpSample_{}'.format(dd))(x)
+            x = Conv2D(filt_num*dd, (3, 3), padding='same',
+                       name='DeConvClean1_{}'.format(dd))(x)
+            if use_bn:
+                x = BatchNormalization()(x)
+            x = ELU(name='elu_Dclean1_{}'.format(dd))(x)
+            x = Conv2D(filt_num*dd, (3, 3), padding='same',
+                       name='DeConvClean2_{}'.format(dd))(x)
+            if use_bn:
+                x = BatchNormalization()(x)
+            x = ELU(name='elu_Dclean2_{}'.format(dd))(x)
+    
+        # classifier
+        lay_out = Conv2D(1, (1, 1), activation='sigmoid', name='output_layer')(x)
+        
+        
+    elif  model_name.lower() == 'resunet':
+        x = UpSampling2D((2, 2))(x)
+        x = concatenate([x, skip_list[2]])
+        res5 = Conv2D(96, (1,1), activation='relu', padding='same')(x)#to be added at the end of block
+        x = Conv2D(96, (3,3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Conv2D(96, (3,3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Add()([x,res5])
+        
+        x = UpSampling2D((2, 2))(x)
+        x = concatenate([x, skip_list[1]])
+        res6 = Conv2D(48, (1,1), activation='relu', padding='same')(x)#to be added at the end of block
+        x = Conv2D(48, (3,3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Conv2D(48, (3,3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Add()([x,res6])
+        
+        x = UpSampling2D((2, 2))(x)
+        x = concatenate([x, skip_list[0]])
+        res7 = Conv2D(24, (1,1), activation='relu', padding='same')(x)#to be added at the end of block
+        x = Conv2D(24, (3,3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Conv2D(24, (3,3), activation='relu', padding='same')(x)
+        x = BatchNormalization()(x)
+        x = Add()([x,res7])
+        
+        # end part
+        x = Conv2D(1, (1,1), activation='relu', padding='same')(x)
+        res_input = Conv2D(1, (1,1), activation='relu', padding='same')(lay_input)#this seems likely the step, although the graph isn’t clear on this
+        x = Add()([x, res_input])
+        
+        lay_out = Conv2D(1, (1,1), activation='sigmoid', padding='same')(x)
+        
+        
+        
+        
     return Model(lay_input, lay_out)
 
 
@@ -296,6 +337,16 @@ def Inception_model(input_shape=(299, 299, 3)):
         include_top=False, weights=None, input_shape=input_shape, pooling='avg')
     input_layer = incep_model.input
     incep_output = incep_model.output
+    # x = Conv2D(16, (3, 3), activation='relu')(incep_output)
+    # x = Flatten()(x)
+    x = Dense(1, activation='sigmoid')(incep_output)
+    return Model(inputs=input_layer, outputs=x)
+
+def densenet_model(input_shape=(224, 224, 3)):
+    class_model = DenseNet121(
+        include_top=False, weights=None, input_shape=input_shape, pooling='avg')
+    input_layer = class_model.input
+    incep_output = class_model.output
     # x = Conv2D(16, (3, 3), activation='relu')(incep_output)
     # x = Flatten()(x)
     x = Dense(1, activation='sigmoid')(incep_output)
@@ -374,4 +425,58 @@ def res_unet(input_shape):
     out = Conv2D(1, (1,1), activation='sigmoid', padding='same')(x)
     
     return Model(inputs=input_tensor, outputs=out)
+
+
+
+
+def res_unet_encoder(input_shape):
+    
+    input_tensor = Input(shape=(input_shape),name='input_layer')
+    x = Conv2D(24, (3,3), activation='relu', padding='same')(input_tensor)
+    res1 = Conv2D(24, (1,1), activation='relu', padding='same')(input_tensor) #to be added at end of block1
+    x = BatchNormalization()(x)
+    x = Conv2D(24, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    
+    x = Add()([x,res1]) #to be contatenated with decoder
+    block1 = Conv2D(24, (3,3), activation='relu', padding='same', name='skip_1')(x)
+    
+    x = MaxPooling2D((2, 2))(block1)
+    res2 = Conv2D(48, (1,1), activation='relu', padding='same')(x)#to be added at end of block2
+    x = Conv2D(48, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Conv2D(48, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    
+    x = Add()([x, res2])#to be contatenated with decoder
+    block2 = Conv2D(48, (3,3), activation='relu', padding='same', name='skip_2')(x)
+    
+    x = MaxPooling2D((2, 2))(block2)
+    res3 = Conv2D(96, (1,1), activation='relu', padding='same')(x)#to be added at end of block3
+    x = Conv2D(96, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Conv2D(96, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    
+    x = Add()([x, res3])#to be contatenated with decoder
+    block3 = Conv2D(96, (3,3), activation='relu', padding='same', name='skip_3')(x)
+    
+    x = MaxPooling2D((2, 2))(block3)
+    res4 = Conv2D(192, (1,1), activation='relu', padding='same')(x)#to be added at end of block4
+    x = Conv2D(192, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    x = Conv2D(192, (3,3), activation='relu', padding='same')(x)
+    x = BatchNormalization()(x)
+    
+    x = Add()([x, res4])
+    
+    #this is where we'd normally go to the decoder...but we'll make it a classificatino model
+    x = Conv2D(192, (3,3), activation='relu', padding='same')(x)    
+    x = GlobalAveragePooling2D()(x)
+    # classifier
+    lay_out = Dense(1, activation='sigmoid', name='output_layer')(x)
+    
+    return Model(inputs=input_tensor, outputs=lay_out)
+
+
 

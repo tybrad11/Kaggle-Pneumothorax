@@ -21,7 +21,7 @@ from Datagen import PngClassDataGenerator, PngDataGenerator
 from HelperFunctions import (RenameWeights, get_class_datagen, get_seg_datagen,
                              get_train_params, get_val_params)
 from Losses import dice_coef_loss
-from Models import Inception_model
+from Models import Inception_model, densenet_model
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -49,6 +49,9 @@ except Exception as e:
 # ~~~~~~~~ SETUP~~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~
 
+class_model_name = 'densenet'  #or 'inception'
+model_version = '1'
+
 # Setup data
 # pre_train_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/Pneumothorax_norm/'
 # pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/No_Finding_norm/'
@@ -60,23 +63,23 @@ pre_train_negative_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_s
 train_pos_datapath = '/data/Kaggle/pos-filt-png'
 train_neg_datapath = '/data/Kaggle/neg-filt-png'
 
-pretrain_weights_filepath = 'Best_pretrain_class_weights.h5'
-train_weights_filepath = 'Best_Kaggle_Classification_Weights_{}_v4.h5'
+pretrain_weights_filepath = 'Best_pretrain_class_weights_{}_{}.h5'
+train_weights_filepath = 'Best_Kaggle_Classification_Weights_{}_{}_v{}.h5'
 
 # pre-train parameters
 pre_im_dims = (512, 512)
 pre_n_channels = 1
-pre_batch_size = 16
+pre_batch_size = 8
 pre_val_split = .15
 pre_epochs = 10
 pre_multi_process = False
-skip_pretrain = True
+skip_pretrain = False
 
 # train parameters
 im_dims = (512, 512)
 n_channels = 1
 batch_size = 4
-learnRate = 1e-4
+learnRate = 1e-5
 filt_nums = 16
 num_blocks = 5
 val_split = .15
@@ -108,14 +111,17 @@ if not skip_pretrain:
         pre_train_datapath, pre_train_negative_datapath, pre_train_params, pre_val_params, pre_val_split)
 
     # Create model
-    model = Inception_model(input_shape=pre_im_dims+(pre_n_channels,))
+    if class_model_name.lower() == 'densenet':
+        model = densenet_model(input_shape=pre_im_dims+(pre_n_channels,))
+    elif class_model_name.lower() == 'inception':    
+        model = Inception_model(input_shape=pre_im_dims+(pre_n_channels,))
 
     # Compile model
     model.compile(Adam(lr=learnRate), loss='binary_crossentropy',
                   metrics=['accuracy'])
 
     # Create callbacks
-    cb_check = ModelCheckpoint(pretrain_weights_filepath, monitor='val_loss',
+    cb_check = ModelCheckpoint(pretrain_weights_filepath.format(class_model_name, model_version), monitor='val_loss',
                                verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
 
     print('---------------------------------')
@@ -130,7 +136,7 @@ if not skip_pretrain:
                                       validation_data=pre_val_gen)
 
     # Load best weights
-    model.load_weights(pretrain_weights_filepath)
+    model.load_weights(pretrain_weights_filepath.format(class_model_name, model_version))
 
     # Calculate confusion matrix
     print('Calculating classification confusion matrix...')
@@ -160,11 +166,15 @@ else:
     # skip pretraining, load weights and go to regular training
     print('Skipping pre-training, setting up model')
     # Create model
-    model = Inception_model(input_shape=pre_im_dims+(pre_n_channels,))
+     # Create model
+    if class_model_name.lower() == 'densenet':
+        model = densenet_model(input_shape=pre_im_dims+(pre_n_channels,))
+    elif class_model_name.lower() == 'inception':    
+        model = Inception_model(input_shape=pre_im_dims+(pre_n_channels,))
     # Compile model
     model.compile(Adam(lr=learnRate), loss='binary_crossentropy',
                   metrics=['accuracy'])
-    model.load_weights(pretrain_weights_filepath)
+    model.load_weights(pretrain_weights_filepath.format(class_model_name, model_version))
 
 # %% ~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ~~~~~~~ 512 Training~~~~~~~~~
@@ -179,7 +189,7 @@ train_gen, val_gen, class_weights = get_class_datagen(
     train_pos_datapath, train_neg_datapath, train_params, val_params, val_split)
 
 # Create callbacks
-cur_weights_path = train_weights_filepath.format('512train')
+cur_weights_path = train_weights_filepath.format(class_model_name, '512train', model_version)
 cb_check = ModelCheckpoint(cur_weights_path, monitor='val_loss', verbose=1,
                            save_best_only=True, save_weights_only=True, mode='auto', period=1)
 
@@ -242,7 +252,7 @@ full_train_gen, full_val_gen, class_weights = get_class_datagen(
     train_pos_datapath, train_neg_datapath, full_train_params, full_val_params, val_split)
 
 # Create callbacks
-cur_weights_path = train_weights_filepath.format('1024train')
+cur_weights_path = train_weights_filepath.format(class_model_name, '1024train', model_version)
 cb_check = ModelCheckpoint(cur_weights_path, monitor='val_loss', verbose=1,
                            save_best_only=True, save_weights_only=True, mode='auto', period=1)
 
