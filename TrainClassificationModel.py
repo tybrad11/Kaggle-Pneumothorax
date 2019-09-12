@@ -21,7 +21,7 @@ from Datagen import PngClassDataGenerator, PngDataGenerator
 from HelperFunctions import (RenameWeights, get_class_datagen, get_seg_datagen,
                              get_train_params, get_val_params)
 from Losses import dice_coef_loss
-from Models import Inception_model, densenet_model
+from Models import Inception_model, densenet_model, efficient_model
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -49,8 +49,8 @@ except Exception as e:
 # ~~~~~~~~ SETUP~~~~~~~
 # ~~~~~~~~~~~~~~~~~~~~~~
 
-class_model_name = 'densenet'  #or 'inception'
-model_version = '1'
+class_model_name = 'efficientnet'  # 'inception' or 'efficientnet or 'densenet'
+model_version = '2'
 
 # Setup data
 # pre_train_datapath = '/data/Kaggle/nih-chest-dataset/images_resampled_sorted_into_categories/Pneumothorax_norm/'
@@ -71,7 +71,7 @@ pre_im_dims = (512, 512)
 pre_n_channels = 1
 pre_batch_size = 8
 pre_val_split = .15
-pre_epochs = 10
+pre_epochs = 30
 pre_multi_process = False
 skip_pretrain = False
 
@@ -79,12 +79,12 @@ skip_pretrain = False
 im_dims = (512, 512)
 n_channels = 1
 batch_size = 4
-learnRate = 1e-5
+learnRate = 1e-4
 filt_nums = 16
 num_blocks = 5
 val_split = .15
 epochs = 10
-full_epochs = 30  # epochs trained on 1024 data
+full_epochs = 55  # epochs trained on 1024 data
 multi_process = False
 
 # datagen params
@@ -115,12 +115,16 @@ if not skip_pretrain:
         model = densenet_model(input_shape=pre_im_dims+(pre_n_channels,))
     elif class_model_name.lower() == 'inception':    
         model = Inception_model(input_shape=pre_im_dims+(pre_n_channels,))
+    elif class_model_name.lower() == 'efficientnet':
+        model = efficient_model(input_shape=pre_im_dims+(pre_n_channels,))
 
     # Compile model
     model.compile(Adam(lr=learnRate), loss='binary_crossentropy',
                   metrics=['accuracy'])
 
     # Create callbacks
+    cb_plateau = ReduceLROnPlateau(
+        monitor='val_loss', factor=.5, patience=10, verbose=1)
     cb_check = ModelCheckpoint(pretrain_weights_filepath.format(class_model_name, model_version), monitor='val_loss',
                                verbose=1, save_best_only=True, save_weights_only=True, mode='auto', period=1)
 
@@ -131,7 +135,7 @@ if not skip_pretrain:
     # Train model
     pre_history = model.fit_generator(generator=pre_train_gen,
                                       epochs=pre_epochs, use_multiprocessing=pre_multi_process,
-                                      workers=8, verbose=1, callbacks=[cb_check],
+                                      workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
                                       class_weight=class_weights,
                                       validation_data=pre_val_gen)
 
@@ -171,6 +175,8 @@ else:
         model = densenet_model(input_shape=pre_im_dims+(pre_n_channels,))
     elif class_model_name.lower() == 'inception':    
         model = Inception_model(input_shape=pre_im_dims+(pre_n_channels,))
+    elif class_model_name.lower() == 'efficientnet':
+        model = efficient_model(input_shape=pre_im_dims+(pre_n_channels,))
     # Compile model
     model.compile(Adam(lr=learnRate), loss='binary_crossentropy',
                   metrics=['accuracy'])
@@ -190,6 +196,8 @@ train_gen, val_gen, class_weights = get_class_datagen(
 
 # Create callbacks
 cur_weights_path = train_weights_filepath.format(class_model_name, '512train', model_version)
+cb_plateau = ReduceLROnPlateau(
+        monitor='val_loss', factor=.5, patience=5, verbose=1)
 cb_check = ModelCheckpoint(cur_weights_path, monitor='val_loss', verbose=1,
                            save_best_only=True, save_weights_only=True, mode='auto', period=1)
 
@@ -200,7 +208,7 @@ print('---------------------------------')
 # Train model
 history = model.fit_generator(generator=train_gen,
                               epochs=epochs, use_multiprocessing=multi_process,
-                              workers=8, verbose=1, callbacks=[cb_check],
+                              workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
                               class_weight=class_weights,
                               validation_data=val_gen)
 
@@ -240,7 +248,14 @@ print('---- Setting up 1024 training ----')
 print('----------------------------------')
 
 # rebuild model
-full_model = Inception_model(input_shape=(1024, 1024)+(n_channels,))
+if class_model_name.lower() == 'densenet':
+        full_model = densenet_model(input_shape=(1024, 1024)+(n_channels,))
+elif class_model_name.lower() == 'inception':    
+        full_model = Inception_model(input_shape=(1024, 1024)+(n_channels,))
+elif class_model_name.lower() == 'efficientnet':
+        full_model = efficient_model(input_shape=(1024, 1024)+(n_channels,))
+
+
 full_model.load_weights(cur_weights_path)
 
 # Compile model
@@ -255,6 +270,8 @@ full_train_gen, full_val_gen, class_weights = get_class_datagen(
 cur_weights_path = train_weights_filepath.format(class_model_name, '1024train', model_version)
 cb_check = ModelCheckpoint(cur_weights_path, monitor='val_loss', verbose=1,
                            save_best_only=True, save_weights_only=True, mode='auto', period=1)
+cb_plateau = ReduceLROnPlateau(
+        monitor='val_loss', factor=.5, patience=5, verbose=1)
 
 print('----------------------------------')
 print('----- Starting 1024 training -----')
@@ -263,7 +280,7 @@ print('----------------------------------')
 # Train model
 history = full_model.fit_generator(generator=full_train_gen,
                                    epochs=full_epochs, use_multiprocessing=multi_process,
-                                   workers=8, verbose=1, callbacks=[cb_check],
+                                   workers=8, verbose=1, callbacks=[cb_check, cb_plateau],
                                    class_weight=class_weights,
                                    validation_data=full_val_gen)
 

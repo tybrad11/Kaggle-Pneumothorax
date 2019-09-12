@@ -57,19 +57,20 @@ def splitfile(file):
 test_datapath = '/data/Kaggle/test-png'
 
 # Best weights directory
-weight_dir = './SavedWeights'
+seg_weight_dir = './'
+class_weight_dir = './SavedWeights/'
 
 # Path to classification model weights to use
 class_weights_fname = 'Classification_Inception_1024.h5'
-class_weights_filepath = join(weight_dir, class_weights_fname)
+class_weights_filepath = join(class_weight_dir, class_weights_fname)
 
 
 # Path(s) to segmentation model weights to use
 # Provide list for ensemble evaluation, string for single model
 # seg_weight_name = ['Best_Kaggle_Weights_1024train.h5','Best_Kaggle_Weights_1024train_v2.h5','Best_Kaggle_Weights_1024train_v3.h5']
 # seg_weight_filepath = [join(weight_dir,name) for name in seg_weight_fname]
-seg_weight_fname = 'Segmentation_BlockModel_16-5_1024_all_pos.h5'
-seg_weight_filepath = join(weight_dir, seg_weight_fname)
+seg_weight_fname = 'Best_Kaggle_Weights_block2d_1024train_v1.h5'
+seg_weight_filepath = join(seg_weight_dir, seg_weight_fname)
 
 # Where to save submission output
 submission_filepath = 'Submissions/Submission_v10.csv'
@@ -85,6 +86,7 @@ batch_size = 4
 im_dims = (1024, 1024)
 n_channels = 1
 thresh = .85  # threshold for classification model
+seg_thresh = 0.4
 
 # Get list of testing files
 img_files = natsorted(glob(join(test_datapath, '*.png')))
@@ -105,7 +107,7 @@ def LoadImg(f, dims=(1024, 1024)):
 
 def GetSubData(file, label, mask):
     mask = mask[..., 0]
-    mask = (mask > .5).astype(np.int)
+    mask = (mask > 0.5).astype(np.int)
     fid = splitfile(file)
 
     if label == 0:
@@ -233,7 +235,7 @@ def SaveImMaskAsPng(img, mask, name, sdir='.'):
     bkgd.save(join(sdir, msk_name))
 
 
-output_dir = 'SampleImagesAndMasks_v5'
+output_dir = 'SampleImagesAndMasks_v10'
 if not os.path.exists(output_dir):
     os.mkdir(output_dir)
 tqdm.write('Saving sample images and masks...')

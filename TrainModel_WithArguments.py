@@ -2,15 +2,20 @@
 
 '''
 input: 
-    seg_model_name  (string)  -- determines which model to use
+    seg_model_name  (string)  -- determines which model to use:
+                                    'resunet', 'block2d'
     model_num  (string)  --  for saving the model 
     skip_positive_only_training (bool)  -- Skip pretraining segmentation model 
-                                            on only images that are positive?
+                                     on only images that are positive?                                     
+    skip_all_cases_training (bool) -- don't train on all cases (the default 
+                                    order is all-train, positive-train, 
+                                    quality-train)
+    skip_quality_only_training (bool)  -- don't train on high quality positive 
+                                    cases
     skip_encoder_pretrain (bool) -- skip the pre-training of the classification 
-                            model on NIH data
+                                   model on NIH data
     skip_encoder_training -- skip any training of classification model/encoder
-
-
+    
 
 
 
@@ -51,7 +56,7 @@ import argparse
 def get_seg_model(seg_model_name, input_dims):
     #return segmentation model based on name
     if seg_model_name.lower() == 'block2d':
-        full_model = BlockModel2D(input_dims, filt_nums=16, numBlocks=4)
+        full_model = BlockModel2D(input_dims, filt_num=16, numBlocks=4)
     elif seg_model_name.lower() == 'resunet':
         full_model = res_unet(input_dims)
     
@@ -61,7 +66,7 @@ def get_classifier_model(seg_model_name, input_dims):
     #return segmentation model based on name
     if seg_model_name.lower() == 'block2d':
         full_model = BlockModel_Classifier(input_shape=input_dims,
-                                          filt_nums=16, numBlocks=4)
+                                          filt_num=16, numBlocks=4)
     elif seg_model_name.lower() == 'resunet':
         full_model = res_unet_encoder(input_dims)
     
@@ -123,7 +128,7 @@ config = tf.ConfigProto()
 # dynamically grow the memory used on the GPU
 config.gpu_options.allow_growth = True
 # to log device placement (on which device the operation ran)
-config.log_device_placement = True
+config.log_device_placement = False
 sess = tf.Session(config=config)
 # set this TensorFlow session as the default session for Keras
 set_session(sess)
@@ -182,7 +187,7 @@ batch_size = 4
 learnRate = 1e-4
 val_split = .15
 epochs_unfreeze = [5, 10]  # epochs before and after unfreezing weights
-full_epochs = 60  # epochs trained on 1024 data with only large masks
+full_epochs = 30  # epochs trained on 1024 data with only large masks
 #full_epochs_all = 10  # epochs trained on all positive masks
 
 # model parameters
@@ -355,7 +360,7 @@ best_weight_path = best_weight_filepath.format(seg_model_name,'1024train', model
 
 
 # Create callbacks
-cb_plateau = ReduceLROnPlateau(monitor='val_loss', factor=.5, patience=3, verbose=1)
+cb_plateau = ReduceLROnPlateau(monitor='val_loss', factor=.5, patience=5, verbose=1)
 cb_check = ModelCheckpoint(best_weight_path, monitor='val_loss',
                            verbose=1, save_best_only=True,
                            save_weights_only=True, mode='auto', period=1)    

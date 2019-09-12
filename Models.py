@@ -352,6 +352,16 @@ def densenet_model(input_shape=(224, 224, 3)):
     x = Dense(1, activation='sigmoid')(incep_output)
     return Model(inputs=input_layer, outputs=x)
 
+
+from efficientnet.keras import EfficientNetB0, EfficientNetB4, EfficientNetB7
+def efficient_model(input_shape=(224,224,3)):
+    model= EfficientNetB0(input_shape=input_shape, weights=None) #can do B7 if want larger
+    input_layer = model.input
+    last_layer = model.layers[-2].output
+    x = Dense(1, activation='sigmoid')(last_layer)
+    return Model(inputs=input_layer, outputs=x)
+
+
 def res_unet(input_shape):
     
     input_tensor = Input(shape=(input_shape),name='input_layer')
@@ -480,3 +490,278 @@ def res_unet_encoder(input_shape):
 
 
 
+
+  #############################################################################
+ ######################### borrowed from internet ############################
+#############################################################################
+
+  #######################    
+ #### Attention U-net ##
+#######################
+
+import keras,os
+from keras.models import Model
+from keras.layers.merge import add,multiply
+from keras.layers import Lambda,Input, Conv2D,Conv2DTranspose, MaxPooling2D, UpSampling2D,Cropping2D, core, Dropout,BatchNormalization,concatenate,Activation
+from keras import backend as K
+from keras.layers.core import Layer, InputSpec
+from keras.layers.advanced_activations import LeakyReLU
+
+
+
+def _MiniUnet(input,shape):
+    x1 = Conv2D(shape, (3, 3), strides=(1, 1), padding="same",activation="relu")(input)
+    pool1=MaxPooling2D(pool_size=(2, 2))(x1)
+    
+    x2 = Conv2D(shape*2, (3, 3), strides=(1, 1), padding="same",activation="relu")(pool1)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(x2)
+    
+    x3 = Conv2D(shape * 3, (3, 3), strides=(1, 1), padding="same",activation="relu")(pool2)
+    
+    x=concatenate([UpSampling2D(size=(2,2))(x3),x2],axis=3)
+    x = Conv2D(shape*2, (3, 3), strides=(1, 1), padding="same",activation="relu")(x)
+    
+    x = concatenate([UpSampling2D(size=(2, 2))(x),x1],axis=3)
+    x = Conv2D(shape, (3, 3), strides=(1, 1), padding="same", activation="sigmoid")(x)
+    return x
+
+def expend_as(tensor, rep):
+    my_repeat = Lambda(lambda x, repnum: K.repeat_elements(x, repnum, axis=3), arguments={'repnum': rep})(tensor)
+    return my_repeat
+
+def AttnGatingBlock(x, g, inter_shape):
+    shape_x = K.int_shape(x)  # 32
+    shape_g = K.int_shape(g)  # 16
+    
+    theta_x = Conv2D(inter_shape, (3, 3), strides=(2, 2), padding='same')(x)  # 16
+    shape_theta_x = K.int_shape(theta_x)
+    
+    phi_g = Conv2D(inter_shape, (1, 1), padding='same')(g)
+    upsample_g = Conv2DTranspose(inter_shape, (3, 3),strides=(shape_theta_x[1] // shape_g[1], shape_theta_x[2] // shape_g[2]),padding='same')(phi_g)  # 16
+    
+    concat_xg = add([upsample_g, theta_x])
+    act_xg = Activation('relu')(concat_xg)
+    psi = Conv2D(1, (1, 1), padding='same')(act_xg)
+    sigmoid_xg = Activation('sigmoid')(psi)
+    shape_sigmoid = K.int_shape(sigmoid_xg)
+    upsample_psi = UpSampling2D(size=(shape_x[1] // shape_sigmoid[1], shape_x[2] // shape_sigmoid[2]))(sigmoid_xg)  # 32
+    
+    # my_repeat=Lambda(lambda xinput:K.repeat_elements(xinput[0],shape_x[1],axis=1))
+    # upsample_psi=my_repeat([upsample_psi])
+    upsample_psi = expend_as(upsample_psi, shape_x[3])
+    
+    y = multiply([upsample_psi, x])
+    
+    # print(K.is_keras_tensor(upsample_psi))
+    
+    result = Conv2D(shape_x[3], (1, 1), padding='same')(y)
+    result_bn = BatchNormalization()(result)
+    return result_bn
+
+def UnetGatingSignal(input, is_batchnorm=False):
+    shape = K.int_shape(input)
+    x = Conv2D(shape[3] * 2, (1, 1), strides=(1, 1), padding="same")(input)
+    if is_batchnorm:
+        x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    return x
+
+def UnetConv2D(input, outdim, is_batchnorm=False):
+    shape = K.int_shape(input)
+    x = Conv2D(outdim, (3, 3), strides=(1, 1), padding="same")(input)
+    if is_batchnorm:
+        x =BatchNormalization()(x)
+    x = Activation('relu')(x)
+    
+    x = Conv2D(outdim, (3, 3), strides=(1, 1), padding="same")(x)
+    if is_batchnorm:
+        x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    return x
+def UnetConv2DPro(input, outdim):
+    x = Conv2D(outdim, (3, 3), strides=(1, 1), padding="same")(input)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    
+    x = Conv2D(outdim, (3, 3), strides=(1, 1), padding="same")(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    
+    attn_shortcut=_MiniUnet(input,outdim)
+    
+    merge=multiply([attn_shortcut,x])
+    result=add([merge,x])
+    return result
+
+
+def attention_unet(input_shape):
+    inputs = Input((input_shape))
+    conv = Conv2D(16, (3, 3), padding='same')(inputs)  # 'valid'
+    conv = LeakyReLU(alpha=0.3)(conv)
+    
+    conv1 = UnetConv2D(conv, 32,is_batchnorm=True)  # 32 128
+    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
+    
+    conv2 = UnetConv2D(pool1, 32,is_batchnorm=True)  # 32 64
+    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
+    
+    conv3 = UnetConv2D(pool2, 64,is_batchnorm=True)  # 64 32
+    pool3 = MaxPooling2D(pool_size=(2, 2))(conv3)
+    
+    conv4 = UnetConv2D(pool3, 64,is_batchnorm=True)  # 64 16
+    pool4 = MaxPooling2D(pool_size=(2, 2))(conv4)
+    
+    center = UnetConv2D(pool4, 128,is_batchnorm=True)  # 128 8
+    
+    gating = UnetGatingSignal(center, is_batchnorm=True)
+    attn_1 = AttnGatingBlock(conv4, gating, 128)
+    up1 = concatenate([Conv2DTranspose(64, (3, 3), strides=(2, 2), padding='same',activation="relu")(center), attn_1], axis=3)
+    
+    gating = UnetGatingSignal(up1, is_batchnorm=True)
+    attn_2 = AttnGatingBlock(conv3, gating, 64)
+    up2 = concatenate([Conv2DTranspose(64, (3, 3), strides=(2, 2), padding='same',activation="relu")(up1), attn_2], axis=3)
+    
+    gating = UnetGatingSignal(up2, is_batchnorm=True)
+    attn_3 = AttnGatingBlock(conv2, gating, 32)
+    up3 = concatenate([Conv2DTranspose(32, (3, 3), strides=(2, 2), padding='same',activation="relu")(up2), attn_3], axis=3)
+    
+    up4 = concatenate([Conv2DTranspose(32, (3, 3), strides=(2, 2), padding='same',activation="relu")(up3), conv1], axis=3)
+    
+    
+    conv8 = Conv2D(1, (1, 1), activation='relu', padding='same')(up4)
+#    conv8 = core.Reshape((input_shape[0] * input_shape[1],(1)))(conv8)
+    ############
+    act = Activation('sigmoid')(conv8)
+    
+    return Model(inputs=inputs, outputs=act)
+
+   ###############################################     
+  ### END OF   -- Attention U-net ###############
+ ############################################### 
+
+
+
+  #######################    
+ #### tiramisu net #####
+#######################
+
+import keras.models as models
+from keras.layers.core import Permute
+import json
+
+# weight_decay = 0.0001
+from keras.regularizers import l2
+
+
+
+def DenseBlock(layers_count, filters, previous_layer, model_layers, level):
+    model_layers[level] = {}
+    for i in range(layers_count):
+        model_layers[level]['b_norm'+str(i+1)] = BatchNormalization(mode=0, axis=3,
+                                     gamma_regularizer=l2(0.0001),
+                                     beta_regularizer=l2(0.0001))(previous_layer)
+        model_layers[level]['act'+str(i+1)] = Activation('relu')(model_layers[level]['b_norm'+str(i+1)])
+        model_layers[level]['conv'+str(i+1)] = Conv2D(filters,   kernel_size=(3, 3), padding='same',
+                                    kernel_initializer="he_uniform",
+                                    data_format='channels_last')(model_layers[level]['act'+str(i+1)])
+        model_layers[level]['drop_out'+str(i+1)] = Dropout(0.2)(model_layers[level]['conv'+str(i+1)])
+        previous_layer  = model_layers[level]['drop_out'+str(i+1)]
+    # print(model_layers)
+    return model_layers[level]['drop_out'+ str(layers_count)] # return last layer of this level 
+
+
+def TransitionDown(filters, previous_layer, model_layers, level):
+    model_layers[level] = {}
+    model_layers[level]['b_norm'] = BatchNormalization(mode=0, axis=3,
+                                 gamma_regularizer=l2(0.0001),
+                                 beta_regularizer=l2(0.0001))(previous_layer)
+    model_layers[level]['act'] = Activation('relu')(model_layers[level]['b_norm'])
+    model_layers[level]['conv'] = Conv2D(filters, kernel_size=(1, 1), padding='same',
+                              kernel_initializer="he_uniform")(model_layers[level]['act'])
+    model_layers[level]['drop_out'] = Dropout(0.2)(model_layers[level]['conv'])
+    model_layers[level]['max_pool'] = MaxPooling2D(pool_size=(2, 2),
+                            strides=(2, 2),
+                            data_format='channels_last')(model_layers[level]['drop_out'])
+    return model_layers[level]['max_pool']
+
+def TransitionUp(filters,input_shape,output_shape, previous_layer, model_layers, level):
+    model_layers[level] = {}
+    model_layers[level]['conv'] = Conv2DTranspose(filters,  kernel_size=(3, 3), strides=(2, 2),
+                                        padding='same',
+                                        output_shape=output_shape,
+                                        input_shape=input_shape,
+                                        kernel_initializer="he_uniform",
+                                        data_format='channels_last')(previous_layer)
+
+    return model_layers[level]['conv']
+
+def tiramisu(input_shape):
+    inputs = Input(input_shape)
+
+    first_conv = Conv2D(48, kernel_size=(3, 3), padding='same', 
+                            kernel_initializer="he_uniform",
+                            kernel_regularizer = l2(0.0001),
+                            data_format='channels_last')(inputs)
+    # first 
+    shape_1_up = (int(input_shape[0]/(2**5)), int(input_shape[1]/(2**5)))   
+    shape_2_up = (int(input_shape[0]/(2**4)), int(input_shape[1]/(2**4)))
+    shape_3_up = (int(input_shape[0]/(2**3)), int(input_shape[1]/(2**3)))
+    shape_4_up = (int(input_shape[0]/(2**2)), int(input_shape[1]/(2**2)))
+    shape_5_up = (int(input_shape[0]/(2**1)), int(input_shape[1]/(2**1)))
+    
+    f = [20, 30, 30, 40, 50, 60]
+    
+    enc_model_layers = {}
+
+    layer_1_down  = DenseBlock(5,f[0], first_conv, enc_model_layers, 'layer_1_down' ) # 5*12 = 60 + 48 = 108
+    layer_1a_down  = TransitionDown(f[0], layer_1_down, enc_model_layers,  'layer_1a_down')
+    
+    layer_2_down = DenseBlock(5,f[1], layer_1a_down, enc_model_layers, 'layer_2_down' ) # 5*12 = 60 + 108 = 168
+    layer_2a_down = TransitionDown(f[1], layer_2_down, enc_model_layers,  'layer_2a_down')
+    
+    layer_3_down  = DenseBlock(5,f[2], layer_2a_down, enc_model_layers, 'layer_3_down' ) # 5*12 = 60 + 168 = 228
+    layer_3a_down  = TransitionDown(f[2], layer_3_down, enc_model_layers,  'layer_3a_down')
+    
+    layer_4_down  = DenseBlock(5,f[3], layer_3a_down, enc_model_layers, 'layer_4_down' )# 5*12 = 60 + 228 = 288
+    layer_4a_down  = TransitionDown(f[4], layer_4_down, enc_model_layers,  'layer_4a_down')
+    
+    layer_5_down  = DenseBlock(5,f[4], layer_4a_down, enc_model_layers, 'layer_5_down' ) # 5*12 = 60 + 288 = 348
+    layer_5a_down  = TransitionDown(f[4], layer_5_down, enc_model_layers,  'layer_5a_down')
+
+    layer_bottleneck  = DenseBlock(15,f[5], layer_5a_down, enc_model_layers,  'layer_bottleneck') # m = 348 + 5*12 = 408
+
+    
+    layer_1_up  = TransitionUp(f[4], (f[4],)+shape_1_up, (None,f[4],)+ shape_2_up, layer_bottleneck, enc_model_layers, 'layer_1_up')  # m = 348 + 5x12 + 5x12 = 468.
+    skip_up_down_1 = concatenate([layer_1_up, enc_model_layers['layer_5_down']['conv'+ str(5)]], axis=-1)
+    layer_1a_up  = DenseBlock(5,f[4], skip_up_down_1, enc_model_layers, 'layer_1a_up' )
+
+    layer_2_up  = TransitionUp(f[3], (f[3],)+shape_2_up, (None,f[3],)+ shape_3_up, layer_1a_up, enc_model_layers, 'layer_2_up') # m = 288 + 5x12 + 5x12 = 408
+    skip_up_down_2 = concatenate([layer_2_up, enc_model_layers['layer_4_down']['conv'+ str(5)]], axis=-1)
+    layer_2a_up  = DenseBlock(5,f[3], skip_up_down_2, enc_model_layers, 'layer_2a_up' )
+
+    layer_3_up  = TransitionUp(f[2],  (f[2],)+shape_3_up, (None,f[2],)+ shape_4_up, layer_2a_up, enc_model_layers, 'layer_3_up') # m = 228 + 5x12 + 5x12 = 348
+    skip_up_down_3 = concatenate([layer_3_up, enc_model_layers['layer_3_down']['conv'+ str(5)]], axis=-1)
+    layer_3a_up  = DenseBlock(5,f[2], skip_up_down_3, enc_model_layers, 'layer_3a_up' )
+
+    layer_4_up  = TransitionUp(f[1],  (f[1],)+shape_4_up, (None,f[1],)+ shape_5_up, layer_3a_up, enc_model_layers, 'layer_4_up') # m = 168 + 5x12 + 5x12 = 288
+    skip_up_down_4 = concatenate([layer_4_up, enc_model_layers['layer_2_down']['conv'+ str(5)]], axis=-1)
+    layer_4a_up  = DenseBlock(5,f[1], skip_up_down_4, enc_model_layers, 'layer_4a_up' )
+
+    layer_5_up  = TransitionUp(f[0],  (f[0],)+shape_5_up, (None, f[0], input_shape[1], input_shape[1]), layer_4a_up, enc_model_layers, 'layer_5_up') # m = 108 + 5x12 + 5x12 = 228
+    skip_up_down_5 = concatenate([layer_5_up, enc_model_layers['layer_1_down']['conv'+ str(5)]], axis=-1)
+    layer_5a_up  = DenseBlock(5,f[0], skip_up_down_5, enc_model_layers, 'concatenate' )
+
+    # last 
+    last_conv = Conv2D(1, activation='sigmoid',
+                            kernel_size=(1,1), 
+                            padding='same',
+                            kernel_regularizer = l2(0.0001),
+                            data_format='channels_last')(layer_5a_up)
+        
+    
+    
+    return Model(inputs=[inputs], outputs=[last_conv])
+
+   ###############################################     
+  ### END OF   -- tiramisu net ##################
+ ############################################### 
